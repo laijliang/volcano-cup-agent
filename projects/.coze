@@ -1,16 +1,17 @@
 [project]
-entrypoint = "server.js"
-requires = [ "nodejs-24" ]
-template = "expo"
-version = "0.0.24"
-appliedPatches = [ ]
+sub_id = "3a7f1b2c"
+name = "expo-express-monorepo"
+requires = ["nodejs-24"]
+project_type = "web"
+
+[preview]
+preview_enable = "enabled"
 
 [dev]
-build = [ "bash", ".cozeproj/scripts/dev_build.sh" ]
-run = [ "bash", ".cozeproj/scripts/dev_run.sh" ]
-validate = [ "bash", ".cozeproj/scripts/validate.sh" ]
+build = ["bash", ".cozeproj/scripts/dev_build.sh"]
+run = ["bash", ".cozeproj/scripts/dev_run.sh"]
 
 [deploy]
-build = [ "bash", ".cozeproj/scripts/prod_build.sh" ]
-run = [ "bash", ".cozeproj/scripts/prod_run.sh" ]
+build = ["bash", ".cozeproj/scripts/prod_build.sh"]
+run = ["bash", ".cozeproj/scripts/prod_run.sh"]
 build_app_dir = "./client"

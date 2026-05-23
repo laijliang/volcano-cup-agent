@@ -259,3 +259,46 @@ import { Screen } from '../../../components/Screen';
 ## 本地开发
 
 `coze dev`：用来首次启动前后端服务，也可以用来重启前后端服务（该命令会先尝试杀掉占用端口的进程，再启动服务）
+
+## 预览链路配置
+
+### 项目结构
+
+- **工作区根目录**：`/workspace/projects`
+- **技术项目根目录**：`/workspace/projects/projects/`（子目录）
+- **Expo 代码**：`/workspace/projects/projects/client/`
+- **Server 代码**：`/workspace/projects/projects/server/`
+
+### 预览链路
+
+本项目为 Expo 应用，支持 web 预览。预览链路配置如下：
+
+| 配置项 | 值 |
+|--------|-----|
+| 预览类型 | web |
+| 预览端口 | 5000 |
+| 预览命令 | `npx expo start --web --port 5000 --lan` |
+| 后端地址 | http://localhost:9091 |
+
+### 根 `.coze` 与子项目 `.coze` 映射
+
+- **根 `.coze`**：`/workspace/projects/.coze`
+  - `project_type = "web"`
+  - `preview_enable = "enabled"`
+  - `[subprojects].path = ["projects"]`
+
+- **子项目 `.coze`**：`/workspace/projects/projects/.coze`
+  - 与根 `.coze` 保持 `project_type` 一致
+
+### 预览脚本
+
+预览链路入口脚本位于工作区根目录：
+
+- `/workspace/projects/scripts/coze-preview-build.sh` - 依赖安装
+- `/workspace/projects/scripts/coze-preview-run.sh` - 启动 Expo web 预览
+
+### 注意事项
+
+1. Expo 不接受 `0.0.0.0` 作为 host 参数，需使用 `--lan` 启用局域网访问
+2. 后端服务（端口 9091）需要单独启动才能完整使用应用功能
+3. Expo 依赖版本警告（`expo@54.0.33` vs `~54.0.34`）不影响基本预览功能
