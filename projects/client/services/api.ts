@@ -127,3 +127,17 @@ export async function getStats(): Promise<any> {
   if (!response.ok) throw new Error('Failed to fetch stats');
   return response.json();
 }
+
+// 获取当前用户信息
+export async function getUserProfile(): Promise<{
+  id: string;
+  name: string;
+  avatar: string;
+  level: number;
+  exp: number;
+  created_at: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/user/me`);
+  if (!response.ok) throw new Error('Failed to fetch user profile');
+  return response.json();
+}

@@ -1,136 +1,128 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { getMainQuests, getSideQuests, getStats } from '@/services/api';
 
-const { width } = Dimensions.get('window');
+interface MainQuest {
+  id: string;
+  chapter: string;
+  title: string;
+  subtitle: string;
+  progress: number;
+  total: number;
+  status: string;
+  region: string;
+  reward: string;
+}
 
-// 主线任务
-const mainQuests = [
-  {
-    id: '1',
-    chapter: '第一章',
-    title: '寻穗之旅',
-    subtitle: '初到广州，探索五羊圣地',
-    progress: 3,
-    total: 5,
-    status: 'active',
-    region: 'yuexiu',
-    reward: '解锁镇海楼区域',
-  },
-  {
-    id: '2',
-    chapter: '第二章',
-    title: '西关风情',
-    subtitle: '走进荔湾，感受岭南韵味',
-    progress: 0,
-    total: 6,
-    status: 'locked',
-    region: 'liwan',
-    reward: '解锁永庆坊',
-  },
-  {
-    id: '3',
-    chapter: '第三章',
-    title: '珠江夜游',
-    subtitle: '跨越珠水，眺望小蛮腰',
-    progress: 0,
-    total: 5,
-    status: 'locked',
-    region: 'haizhu',
-    reward: '解锁广州塔',
-  },
-];
-
-// 支线任务
-const sideQuests = [
-  {
-    id: 's1',
-    type: 'food',
-    title: '早茶达人',
-    subtitle: '品尝3家地道茶楼',
-    progress: 1,
-    total: 3,
-    status: 'active',
-    reward: 50,
-    locations: ['点都德', '陶陶居', '莲香楼'],
-  },
-  {
-    id: 's2',
-    type: 'culture',
-    title: '博物馆探索',
-    subtitle: '参观2家博物馆',
-    progress: 2,
-    total: 2,
-    status: 'completed',
-    reward: 80,
-    locations: ['南越王博物院', '广东省博物馆'],
-  },
-  {
-    id: 's3',
-    type: 'food',
-    title: '肠粉寻味',
-    subtitle: '寻找最正宗的布拉肠',
-    progress: 0,
-    total: 4,
-    status: 'locked',
-    reward: 30,
-    locations: [],
-  },
-  {
-    id: 's4',
-    type: 'secret',
-    title: '隐藏任务：老广的记忆',
-    subtitle: '发现沙面岛的秘密...',
-    progress: 0,
-    total: 1,
-    status: 'hidden',
-    reward: 200,
-    locations: [],
-  },
-];
+interface SideQuest {
+  id: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  progress: number;
+  total: number;
+  status: string;
+  reward: number;
+  locations: string[];
+}
 
 const getQuestIcon = (type: string) => {
   switch (type) {
-    case 'food':
-      return 'utensils';
-    case 'culture':
-      return 'landmark';
-    case 'secret':
-      return 'star';
-    default:
-      return 'scroll';
+    case 'food': return 'utensils';
+    case 'culture': return 'landmark';
+    case 'secret': return 'star';
+    default: return 'scroll';
   }
 };
 
-const getQuestColor = (type: string) => {
-  switch (type) {
-    case 'food':
-      return '#E85D4C';
-    case 'culture':
-      return '#2D7D46';
-    case 'secret':
-      return '#D4A574';
-    default:
-      return '#4682B4';
-  }
-};
-
-import { Dimensions } from 'react-native';
+const FILTER_OPTIONS = ['全部', '美食', '人文', '隐藏'];
 
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const t = useAppTheme();
   const [activeTab, setActiveTab] = useState<'main' | 'side'>('main');
+  const [activeFilter, setActiveFilter] = useState('全部');
 
-  const renderMainQuest = (quest: typeof mainQuests[0]) => {
+  const [mainQuests, setMainQuests] = useState<MainQuest[]>([]);
+  const [sideQuests, setSideQuests] = useState<SideQuest[]>([]);
+  const [stats, setStats] = useState<{ completed_quests?: number; active_quests?: number; total_progress?: number; unlocked_regions?: string[] } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setIsLoading(true);
+      else setRefreshing(true);
+      const [mainData, sideData, statsData] = await Promise.all([
+        getMainQuests(),
+        getSideQuests(),
+        getStats(),
+      ]);
+      setMainQuests(mainData);
+      setSideQuests(sideData);
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to load quests:', error);
+      // Fallback data so page works offline
+      setMainQuests([
+        { id: '1', chapter: '第一章', title: '五羊传说', subtitle: '探索越秀区的五羊石像，了解广州的起源传说', progress: 2, total: 5, status: 'active', region: 'yuexiu', reward: '解锁五羊石像徽章' },
+        { id: '2', chapter: '第二章', title: '西关风情', subtitle: '走进荔湾老街，感受岭南建筑的独特魅力', progress: 0, total: 4, status: 'locked', region: 'liwan', reward: '解锁永庆坊打卡点' },
+        { id: '3', chapter: '第三章', title: '珠江夜游', subtitle: '沿珠江两岸探索，发现广州的璀璨夜景', progress: 0, total: 6, status: 'locked', region: 'haizhu', reward: '解锁珠江夜游路线' },
+      ]);
+      setSideQuests([
+        { id: 's1', type: 'food', title: '寻味广州', subtitle: '品尝三家老字号餐厅的招牌美食', progress: 1, total: 3, status: 'active', reward: 300, locations: ['点都德', '陶陶居', '广州酒家'] },
+        { id: 's2', type: 'culture', title: '博物馆巡礼', subtitle: '参观广州各大博物馆，了解岭南文化', progress: 0, total: 4, status: 'locked', reward: 500, locations: ['广东省博物馆', '南越王博物馆', '广州博物馆', '粤剧艺术博物馆'] },
+        { id: 's3', type: 'secret', title: '隐藏宝藏', subtitle: '寻找三个隐藏在城市角落的秘密打卡点', progress: 0, total: 3, status: 'hidden', reward: 800, locations: [] },
+        { id: 's4', type: 'food', title: '甜品猎人', subtitle: '打卡广州最受欢迎的甜品店', progress: 2, total: 2, status: 'completed', reward: 200, locations: ['南信牛奶甜品', '仁信老铺'] },
+      ]);
+      setStats(null);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    loadData(true);
+  };
+
+  const filteredSideQuests = useMemo(() => {
+    if (activeFilter === '全部') return sideQuests;
+    const typeMap: Record<string, string> = { '美食': 'food', '人文': 'culture', '隐藏': 'secret' };
+    return sideQuests.filter(q => q.type === typeMap[activeFilter]);
+  }, [sideQuests, activeFilter]);
+
+  const completedCount = stats?.completed_quests ?? mainQuests.filter(q => q.status === 'completed').length + sideQuests.filter(q => q.status === 'completed').length;
+  const activeCount = stats?.active_quests ?? mainQuests.filter(q => q.status === 'active').length + sideQuests.filter(q => q.status === 'active').length;
+  const totalProgress = stats?.total_progress ?? Math.round(
+    (mainQuests.reduce((s, q) => s + q.progress, 0) + sideQuests.reduce((s, q) => s + q.progress, 0)) /
+    Math.max(1, mainQuests.reduce((s, q) => s + q.total, 0) + sideQuests.reduce((s, q) => s + q.total, 0)) * 100
+  );
+
+  const handleContinueQuest = (quest: MainQuest) => {
+    router.navigate({ pathname: '/(tabs)/map', params: { region: quest.region } });
+  };
+
+  const renderMainQuest = (quest: MainQuest) => {
     const isLocked = quest.status === 'locked';
     const isActive = quest.status === 'active';
 
@@ -143,8 +135,8 @@ export default function TasksScreen() {
         )}
         {isLocked && (
           <View style={[styles.questBadge, styles.questBadgeLocked]}>
-            <FontAwesome6 name="lock" size={10} color="#999" />
-            <Text style={[styles.questBadgeText, { color: '#999' }]}>未解锁</Text>
+            <FontAwesome6 name="lock" size={10} color={t.textTertiary} />
+            <Text style={[styles.questBadgeText, { color: t.textTertiary }]}>未解锁</Text>
           </View>
         )}
 
@@ -154,7 +146,7 @@ export default function TasksScreen() {
           </View>
           {isActive && (
             <Text style={styles.rewardText}>
-              <FontAwesome6 name="gift" size={12} color="#D4A574" /> {quest.reward}
+              <FontAwesome6 name="gift" size={12} color={t.gold} /> {quest.reward}
             </Text>
           )}
         </View>
@@ -169,7 +161,9 @@ export default function TasksScreen() {
         {isActive && (
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <View
+              <LinearGradient
+                colors={[t.primary, '#4DAE60', '#5EBE70']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={[
                   styles.progressFill,
                   { width: `${(quest.progress / quest.total) * 100}%` },
@@ -183,26 +177,33 @@ export default function TasksScreen() {
         )}
 
         {isActive && (
-          <TouchableOpacity style={styles.continueButton}>
-            <Text style={styles.continueButtonText}>继续任务</Text>
-            <FontAwesome6 name="arrow-right" size={14} color="#FFF" />
-          </TouchableOpacity>
+          <LinearGradient
+            colors={[t.primary, '#4DAE60']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.continueButtonGradient}
+          >
+            <TouchableOpacity style={styles.continueButtonInner} onPress={() => handleContinueQuest(quest)}>
+              <Text style={styles.continueButtonText}>继续任务</Text>
+              <FontAwesome6 name="arrow-right" size={14} color="#FFF" />
+            </TouchableOpacity>
+          </LinearGradient>
         )}
       </View>
     );
   };
 
-  const renderSideQuest = (quest: typeof sideQuests[0]) => {
+  const renderSideQuest = (quest: SideQuest) => {
     const isCompleted = quest.status === 'completed';
     const isLocked = quest.status === 'locked';
     const isHidden = quest.status === 'hidden';
-    const color = getQuestColor(quest.type);
+    const questColorMap: Record<string, string> = { food: t.danger, culture: t.primary, secret: t.gold };
+    const color = questColorMap[quest.type] || t.info;
 
     if (isHidden) {
       return (
         <View key={quest.id} style={[styles.sideQuestCard, styles.sideQuestHidden]}>
           <View style={styles.hiddenOverlay}>
-            <FontAwesome6 name="question" size={24} color="#999" />
+            <FontAwesome6 name="question" size={24} color={t.textTertiary} />
             <Text style={styles.hiddenText}>完成前置任务解锁</Text>
           </View>
         </View>
@@ -216,7 +217,7 @@ export default function TasksScreen() {
             <FontAwesome6
               name={getQuestIcon(quest.type) as any}
               size={18}
-              color={isLocked ? '#999' : color}
+              color={isLocked ? t.textTertiary : color}
             />
           </View>
           <View style={styles.sideQuestInfo}>
@@ -241,7 +242,7 @@ export default function TasksScreen() {
           </View>
         </View>
 
-        {quest.locations.length > 0 && (
+        {quest.locations && quest.locations.length > 0 && (
           <View style={styles.locationsContainer}>
             {quest.locations.map((loc, idx) => (
               <View
@@ -254,7 +255,7 @@ export default function TasksScreen() {
                 <FontAwesome6
                   name={idx < quest.progress ? 'check-circle' : 'circle'}
                   size={12}
-                  color={idx < quest.progress ? '#2D7D46' : '#CCC'}
+                  color={idx < quest.progress ? t.primary : t.textTertiary}
                 />
                 <Text
                   style={[
@@ -272,10 +273,12 @@ export default function TasksScreen() {
         {!isLocked && !isCompleted && (
           <View style={styles.sideQuestProgress}>
             <View style={styles.progressBarSmall}>
-              <View
+              <LinearGradient
+                colors={[color + 'AA', color]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={[
                   styles.progressFillSmall,
-                  { width: `${(quest.progress / quest.total) * 100}%`, backgroundColor: color },
+                  { width: `${(quest.progress / quest.total) * 100}%` },
                 ]}
               />
             </View>
@@ -288,109 +291,19 @@ export default function TasksScreen() {
     );
   };
 
-  return (
-    <Screen>
-      <View style={styles.container}>
-        {/* 顶部 */}
-        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-          <Text style={styles.headerTitle}>任务中心</Text>
-          <View style={styles.headerStats}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>12</Text>
-              <Text style={styles.statLabel}>已完成</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>8</Text>
-              <Text style={styles.statLabel}>进行中</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Tab切换 */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'main' && styles.tabActive]}
-            onPress={() => setActiveTab('main')}
-          >
-            <Text style={[styles.tabText, activeTab === 'main' && styles.tabTextActive]}>
-              主线剧情
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'side' && styles.tabActive]}
-            onPress={() => setActiveTab('side')}
-          >
-            <Text style={[styles.tabText, activeTab === 'side' && styles.tabTextActive]}>
-              支线任务
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 任务列表 */}
-        <ScrollView
-          style={styles.questList}
-          contentContainerStyle={[styles.questListContent, { paddingBottom: insets.bottom + 100 }]}
-          showsVerticalScrollIndicator={false}
-        >
-          {activeTab === 'main' ? (
-            <>
-              {/* 主线进度总览 */}
-              <View style={styles.mainProgressCard}>
-                <View style={styles.mainProgressHeader}>
-                  <Text style={styles.mainProgressTitle}>探索进度</Text>
-                  <Text style={styles.mainProgressPercent}>15%</Text>
-                </View>
-                <View style={styles.mainProgressBar}>
-                  <View style={styles.mainProgressFill} />
-                </View>
-                <View style={styles.mainProgressRegions}>
-                  <Text style={styles.mainProgressRegion}>已解锁：越秀区、荔湾区</Text>
-                  <Text style={styles.mainProgressRegion}>待解锁：海珠区、天河区...</Text>
-                </View>
-              </View>
-
-              {mainQuests.map(renderMainQuest)}
-            </>
-          ) : (
-            <>
-              {/* 支线分类筛选 */}
-              <View style={styles.filterContainer}>
-                {['全部', '美食', '人文', '隐藏'].map((filter, idx) => (
-                  <TouchableOpacity
-                    key={filter}
-                    style={[styles.filterChip, idx === 0 && styles.filterChipActive]}
-                  >
-                    <Text style={[styles.filterText, idx === 0 && styles.filterTextActive]}>
-                      {filter}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {sideQuests.map(renderSideQuest)}
-            </>
-          )}
-        </ScrollView>
-      </View>
-    </Screen>
-  );
-}
-
-const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FDF8F2',
+    backgroundColor: t.bg,
   },
-  // 顶部区域 - 现代化设计
   header: {
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 20,
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
@@ -399,17 +312,20 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#1A1A1A',
+    color: t.text,
     marginBottom: 16,
     letterSpacing: 0.5,
   },
+  headerGlow: {
+    height: 4,
+  },
   headerStats: {
     flexDirection: 'row',
-    backgroundColor: '#F0FFF4',
+    backgroundColor: t.primaryBg,
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#C6F6D5',
+    borderColor: t.primaryBorder,
   },
   statItem: {
     flex: 1,
@@ -418,20 +334,19 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#2D7D46',
+    color: t.primary,
   },
   statLabel: {
     fontSize: 13,
-    color: '#666',
+    color: t.textSecondary,
     marginTop: 4,
     fontWeight: '500',
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#C6F6D5',
+    backgroundColor: t.primaryBorder,
     marginHorizontal: 20,
   },
-  // Tab切换 - 现代化胶囊设计
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -442,26 +357,37 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: t.border,
   },
-  tabActive: {
-    backgroundColor: '#2D7D46',
-    borderColor: '#2D7D46',
-    shadowColor: '#2D7D46',
+  tabGradient: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: t.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  tabInner: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#666',
+    color: t.textSecondary,
   },
   tabTextActive: {
     color: '#FFF',
@@ -472,19 +398,18 @@ const styles = StyleSheet.create({
   questListContent: {
     paddingHorizontal: 20,
   },
-  // 主线进度卡片
   mainProgressCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 24,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 6,
     borderWidth: 1,
-    borderColor: '#E8F5E9',
+    borderColor: t.primaryLight,
   },
   mainProgressHeader: {
     flexDirection: 'row',
@@ -495,26 +420,24 @@ const styles = StyleSheet.create({
   mainProgressTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
   },
   mainProgressPercent: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#2D7D46',
+    color: t.primary,
   },
   mainProgressBar: {
     height: 14,
-    backgroundColor: '#F0FFF4',
+    backgroundColor: t.primaryBg,
     borderRadius: 7,
     overflow: 'hidden',
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#C6F6D5',
+    borderColor: t.primaryBorder,
   },
   mainProgressFill: {
-    width: '15%',
     height: '100%',
-    backgroundColor: '#2D7D46',
     borderRadius: 7,
   },
   mainProgressRegions: {
@@ -522,22 +445,21 @@ const styles = StyleSheet.create({
   },
   mainProgressRegion: {
     fontSize: 13,
-    color: '#666',
+    color: t.textSecondary,
     lineHeight: 18,
   },
-  // 任务卡片 - 现代化设计
   questCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 24,
     padding: 20,
     marginBottom: 18,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 5,
     borderWidth: 1,
-    borderColor: '#F5F5F5',
+    borderColor: t.borderLight,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -547,7 +469,7 @@ const styles = StyleSheet.create({
   questBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0FFF4',
+    backgroundColor: t.primaryBg,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
@@ -555,16 +477,16 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#C6F6D5',
+    borderColor: t.primaryBorder,
   },
   questBadgeLocked: {
-    backgroundColor: '#F5F5F5',
-    borderColor: '#E0E0E0',
+    backgroundColor: t.borderLight,
+    borderColor: t.border,
   },
   questBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#2D7D46',
+    color: t.primary,
     letterSpacing: 0.3,
   },
   questHeader: {
@@ -574,39 +496,39 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   chapterBadge: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: t.borderLight,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
   },
   chapterText: {
     fontSize: 12,
-    color: '#666',
+    color: t.textSecondary,
     fontWeight: '600',
   },
   rewardText: {
     fontSize: 12,
-    color: '#D4A574',
+    color: t.gold,
     fontWeight: '500',
   },
   questTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#1A1A1A',
+    color: t.text,
     marginBottom: 6,
     letterSpacing: 0.3,
   },
   questTitleLocked: {
-    color: '#999',
+    color: t.textTertiary,
   },
   questSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: t.textSecondary,
     marginBottom: 16,
     lineHeight: 20,
   },
   questSubtitleLocked: {
-    color: '#BBB',
+    color: t.textTertiary,
   },
   progressContainer: {
     flexDirection: 'row',
@@ -616,44 +538,43 @@ const styles = StyleSheet.create({
   progressBar: {
     flex: 1,
     height: 10,
-    backgroundColor: '#F0FFF4',
+    backgroundColor: t.primaryBg,
     borderRadius: 5,
     marginRight: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#C6F6D5',
+    borderColor: t.primaryBorder,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#2D7D46',
     borderRadius: 5,
   },
   progressText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#2D7D46',
+    color: t.primary,
   },
-  // 继续按钮 - 渐变风格
-  continueButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2D7D46',
-    paddingVertical: 14,
+  continueButtonGradient: {
     borderRadius: 16,
-    gap: 8,
-    shadowColor: '#2D7D46',
+    overflow: 'hidden',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 6,
+  },
+  continueButtonInner: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 8,
   },
   continueButtonText: {
     color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
   },
-  // 筛选标签
   filterContainer: {
     flexDirection: 'row',
     gap: 10,
@@ -663,35 +584,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 22,
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: t.border,
   },
   filterChipActive: {
-    backgroundColor: '#2D7D46',
-    borderColor: '#2D7D46',
+    backgroundColor: t.primary,
+    borderColor: t.primary,
   },
   filterText: {
     fontSize: 14,
-    color: '#666',
+    color: t.textSecondary,
     fontWeight: '600',
   },
   filterTextActive: {
     color: '#FFF',
   },
-  // 支线任务卡片
   sideQuestCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 20,
     padding: 18,
     marginBottom: 14,
-    shadowColor: '#000',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 3,
     borderWidth: 1,
-    borderColor: '#F5F5F5',
+    borderColor: t.borderLight,
   },
   sideQuestLocked: {
     opacity: 0.7,
@@ -700,10 +620,10 @@ const styles = StyleSheet.create({
     height: 110,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: t.surfaceSecondary,
     borderStyle: 'dashed',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: t.border,
   },
   hiddenOverlay: {
     alignItems: 'center',
@@ -711,7 +631,7 @@ const styles = StyleSheet.create({
   },
   hiddenText: {
     fontSize: 14,
-    color: '#999',
+    color: t.textTertiary,
     fontWeight: '500',
   },
   sideQuestHeader: {
@@ -737,19 +657,19 @@ const styles = StyleSheet.create({
   sideQuestTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
   },
   sideQuestTitleLocked: {
-    color: '#999',
+    color: t.textTertiary,
   },
   completedBadge: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#4CAF50',
+    backgroundColor: t.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#4CAF50',
+    shadowColor: t.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -757,27 +677,27 @@ const styles = StyleSheet.create({
   },
   sideQuestSubtitle: {
     fontSize: 13,
-    color: '#666',
+    color: t.textSecondary,
     marginTop: 4,
   },
   sideQuestSubtitleLocked: {
-    color: '#BBB',
+    color: t.textTertiary,
   },
   rewardBadge: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: t.goldLight,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#FFE4C4',
+    borderColor: t.goldBorder,
   },
   rewardAmount: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#D4A574',
+    color: t.gold,
   },
   rewardAmountLocked: {
-    color: '#CCC',
+    color: t.textTertiary,
   },
   locationsContainer: {
     flexDirection: 'row',
@@ -786,7 +706,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: t.border,
   },
   locationTag: {
     flexDirection: 'row',
@@ -794,18 +714,18 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: t.surfaceTertiary,
     borderRadius: 10,
   },
   locationTagCompleted: {
-    backgroundColor: '#F0FFF4',
+    backgroundColor: t.primaryBg,
   },
   locationText: {
     fontSize: 13,
-    color: '#666',
+    color: t.textSecondary,
   },
   locationTextCompleted: {
-    color: '#2D7D46',
+    color: t.primary,
     fontWeight: '600',
   },
   sideQuestProgress: {
@@ -814,12 +734,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: t.border,
   },
   progressBarSmall: {
     flex: 1,
     height: 8,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: t.border,
     borderRadius: 4,
     marginRight: 10,
     overflow: 'hidden',
@@ -830,7 +750,164 @@ const styles = StyleSheet.create({
   },
   progressTextSmall: {
     fontSize: 12,
-    color: '#666',
+    color: t.textSecondary,
     fontWeight: '600',
   },
-});
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: t.textSecondary,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 10,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: t.textTertiary,
+  },
+  }), [t]);
+
+  if (isLoading) {
+    return (
+      <Screen>
+        <View style={styles.container}>
+          <View style={[styles.header, { paddingTop: 10 }]}>
+            <Text style={styles.headerTitle}>任务中心</Text>
+          </View>
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={t.primary} />
+            <Text style={styles.loadingText}>加载任务中...</Text>
+          </View>
+        </View>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: 10 }]}>
+          <Text style={styles.headerTitle}>任务中心</Text>
+          <View style={styles.headerStats}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{completedCount}</Text>
+              <Text style={styles.statLabel}>已完成</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{activeCount}</Text>
+              <Text style={styles.statLabel}>进行中</Text>
+            </View>
+          </View>
+        </View>
+        <LinearGradient
+          colors={['rgba(45,125,70,0.12)', 'rgba(45,125,70,0.02)', 'transparent']}
+          locations={[0, 0.5, 1]}
+          style={styles.headerGlow}
+        />
+
+        <View style={styles.tabContainer}>
+          {activeTab === 'main' ? (
+            <LinearGradient
+              colors={[t.primary, '#4DAE60']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={styles.tabGradient}
+            >
+              <TouchableOpacity style={styles.tabInner} onPress={() => setActiveTab('main')}>
+                <Text style={[styles.tabText, styles.tabTextActive]}>主线剧情</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          ) : (
+            <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('main')}>
+              <Text style={styles.tabText}>主线剧情</Text>
+            </TouchableOpacity>
+          )}
+          {activeTab === 'side' ? (
+            <LinearGradient
+              colors={[t.primary, '#4DAE60']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={styles.tabGradient}
+            >
+              <TouchableOpacity style={styles.tabInner} onPress={() => setActiveTab('side')}>
+                <Text style={[styles.tabText, styles.tabTextActive]}>支线任务</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          ) : (
+            <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('side')}>
+              <Text style={styles.tabText}>支线任务</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <ScrollView
+          style={styles.questList}
+          contentContainerStyle={[styles.questListContent, { paddingBottom: insets.bottom + 100 }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[t.primary]} tintColor={t.primary} />
+          }
+        >
+          {activeTab === 'main' ? (
+            <>
+              <View style={styles.mainProgressCard}>
+                <View style={styles.mainProgressHeader}>
+                  <Text style={styles.mainProgressTitle}>探索进度</Text>
+                  <Text style={styles.mainProgressPercent}>{totalProgress}%</Text>
+                </View>
+                <View style={styles.mainProgressBar}>
+                  <LinearGradient
+                    colors={[t.primary, '#4DAE60', '#5EBE70']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={[styles.mainProgressFill, { width: `${totalProgress}%` }]}
+                  />
+                </View>
+                <View style={styles.mainProgressRegions}>
+                  <Text style={styles.mainProgressRegion}>
+                    已解锁：{Array.isArray(stats?.unlocked_regions) ? stats.unlocked_regions.join('、') : '越秀区、荔湾区'}
+                  </Text>
+                  <Text style={styles.mainProgressRegion}>
+                    待解锁：{stats?.unlocked_regions ? '更多区域探索中...' : '海珠区、天河区...'}
+                  </Text>
+                </View>
+              </View>
+
+              {mainQuests.map(renderMainQuest)}
+            </>
+          ) : (
+            <>
+              <View style={styles.filterContainer}>
+                {FILTER_OPTIONS.map((filter) => (
+                  <TouchableOpacity
+                    key={filter}
+                    style={[styles.filterChip, activeFilter === filter && styles.filterChipActive]}
+                    onPress={() => setActiveFilter(filter)}
+                  >
+                    <Text style={[styles.filterText, activeFilter === filter && styles.filterTextActive]}>
+                      {filter}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {filteredSideQuests.map(renderSideQuest)}
+              {filteredSideQuests.length === 0 && (
+                <View style={styles.emptyState}>
+                  <FontAwesome6 name="inbox" size={40} color={t.textTertiary} />
+                  <Text style={styles.emptyText}>暂无该类型的支线任务</Text>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
+      </View>
+    </Screen>
+  );
+}

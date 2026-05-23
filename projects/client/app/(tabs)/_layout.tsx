@@ -1,26 +1,23 @@
 import { Tabs } from 'expo-router';
-import { Platform, StyleSheet } from 'react-native';
+import { View, Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { useCSSVariable } from 'uniwind';
+import { useUniwind } from 'uniwind';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const [background, muted, accent, border] = useCSSVariable([
-    '--color-background',
-    '--color-muted',
-    '--color-accent',
-    '--color-border',
-  ]) as string[];
+  const { theme } = useUniwind();
+  const t = useAppTheme();
 
   let tabBarStyle: any = {
-    backgroundColor: background,
+    backgroundColor: t.bg,
     borderTopWidth: 0,
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? insets.bottom : 12,
     height: Platform.OS === 'ios' ? 88 : 72,
     // 现代化阴影效果
-    shadowColor: '#000',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
@@ -43,12 +40,14 @@ export default function TabLayout() {
   }
 
   return (
+    <View style={{ flex: 1, backgroundColor: t.bg }}>
     <Tabs
+      key={theme}
       screenOptions={{
         headerShown: false,
         tabBarStyle,
-        tabBarActiveTintColor: accent,
-        tabBarInactiveTintColor: muted,
+        tabBarActiveTintColor: t.primary,
+        tabBarInactiveTintColor: t.textTertiary,
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
@@ -103,5 +102,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </View>
   );
 }

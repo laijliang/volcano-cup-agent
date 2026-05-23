@@ -2,6 +2,10 @@
 @import 'uniwind';
 @import './heroui/styles';
 
+html, body {
+  background-color: var(--background);
+}
+
 @theme {
   /* Primitive Colors (Do not change between light and dark) */
   --white: oklch(100% 0 0);
@@ -413,5 +417,78 @@
 /* 进度条动画 */
 .progress-animated {
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==================== 区域渐变系统 ==================== */
+
+.gradient-region-yuexiu {
+  background: linear-gradient(135deg, #8B4513 0%, #A0522D 50%, #B5651D 100%);
+}
+.gradient-region-liwan {
+  background: linear-gradient(135deg, #DAA520 0%, #E8B830 50%, #F0C840 100%);
+}
+.gradient-region-haizhu {
+  background: linear-gradient(135deg, #4682B4 0%, #5A9EC4 50%, #6EB5D4 100%);
+}
+.gradient-region-tianhe {
+  background: linear-gradient(135deg, #9370DB 0%, #A580EB 50%, #B590FB 100%);
+}
+.gradient-region-panyu {
+  background: linear-gradient(135deg, #228B22 0%, #32A832 50%, #42B842 100%);
+}
+.gradient-region-baiyun {
+  background: linear-gradient(135deg, #87CEEB 0%, #97DEFB 50%, #A7EEFF 100%);
+}
+.gradient-region-huangpu {
+  background: linear-gradient(135deg, #CD853F 0%, #DD954F 50%, #EDA55F 100%);
+}
+
+/* ==================== 卡片装饰系统 ==================== */
+
+.card-decor-primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 80px;
+  border-bottom-left-radius: 40px;
+  background: linear-gradient(135deg, rgba(45, 125, 70, 0.08), rgba(45, 125, 70, 0.02));
+}
+
+.card-accent-left::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #2D7D46, #D4A574);
+}
+
+/* ==================== 玻璃效果增强 ==================== */
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* ==================== 渐变进度条 ==================== */
+
+.progress-gradient-primary {
+  background: linear-gradient(90deg, #2D7D46 0%, #3D9D56 50%, #4DAD66 100%);
+}
+
+.progress-gradient-accent {
+  background: linear-gradient(90deg, #E85D4C 0%, #F06D5C 50%, #F87D6C 100%);
+}
+
+/* ==================== 渐变 Header 背景 ==================== */
+
+.bg-gradient-header {
+  background: linear-gradient(180deg, rgba(45, 125, 70, 0.12) 0%, rgba(45, 125, 70, 0.04) 30%, transparent 60%);
 }
 

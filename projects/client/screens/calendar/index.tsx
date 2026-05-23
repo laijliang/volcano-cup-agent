@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,18 @@ import {
   ScrollView,
   Image,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { Screen } from '@/components/Screen';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { getCheckins } from '@/services/api';
+import { Spinner, Skeleton } from '@/heroui';
 
 const { width } = Dimensions.get('window');
 
-// 打卡记录类型
 interface CheckinRecord {
   id: string;
   name: string;
@@ -23,130 +27,144 @@ interface CheckinRecord {
   type: string;
 }
 
-// 模拟打卡记录数据
-const checkinData: Record<string, CheckinRecord[]> = {
-  '2026-05-20': [
-    { id: '1', name: '五羊石像', location: '越秀区', image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200', type: 'landmark' },
-  ],
-  '2026-05-18': [
-    { id: '2', name: '镇海楼', location: '越秀区', image: 'https://images.unsplash.com/photo-1565967511849-76a60a516170?w=200', type: 'landmark' },
-    { id: '3', name: '点都德', location: '荔湾区', image: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=200', type: 'food' },
-  ],
-  '2026-05-15': [
-    { id: '4', name: '永庆坊', location: '荔湾区', image: 'https://images.unsplash.com/photo-1583416750470-965b2707b355?w=200', type: 'culture' },
-  ],
-  '2026-05-10': [
-    { id: '5', name: '荔枝湾涌', location: '荔湾区', image: 'https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=200', type: 'food' },
-    { id: '6', name: '沙面岛', location: '荔湾区', image: 'https://images.unsplash.com/photo-1598935898639-81586f7d2129?w=200', type: 'culture' },
-  ],
-};
-
-// 获取当前月份的日期
-const getDaysInMonth = (year: number, month: number) => {
-  return new Date(year, month + 1, 0).getDate();
-};
-
-const getFirstDayOfMonth = (year: number, month: number) => {
-  return new Date(year, month, 1).getDay();
-};
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
 const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
+  const t = useAppTheme();
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [checkinData, setCheckinData] = useState<Record<string, CheckinRecord[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    loadCheckins();
+  }, []);
+
+  const loadCheckins = async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setIsLoading(true);
+      else setRefreshing(true);
+      const data = await getCheckins();
+      const grouped: Record<string, CheckinRecord[]> = {};
+      data.forEach((c: any) => {
+        const date = c.created_at?.split('T')[0] || c.created_at?.substring(0, 10) || '';
+        if (date) {
+          if (!grouped[date]) grouped[date] = [];
+          grouped[date].push({
+            id: c.id || date,
+            name: c.anchor_name || c.name || '打卡点',
+            location: c.location || '',
+            image: c.image_url || c.image || '',
+            type: c.type || 'landmark',
+          });
+        }
+      });
+      setCheckinData(grouped);
+    } catch (error) {
+      console.error('Failed to load checkins:', error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    loadCheckins(true);
+  };
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDay = getFirstDayOfMonth(currentYear, currentMonth);
 
   const formatDate = (day: number) => {
-    const month = (currentMonth + 1).toString().padStart(2, '0');
-    const dayStr = day.toString().padStart(2, '0');
-    return `${currentYear}-${month}-${dayStr}`;
+    const m = (currentMonth + 1).toString().padStart(2, '0');
+    const d = day.toString().padStart(2, '0');
+    return `${currentYear}-${m}-${d}`;
   };
 
   const formatDisplayDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split('-');
+    const [, month, day] = dateStr.split('-');
     return `${parseInt(month)}月${parseInt(day)}日`;
   };
 
-  const hasCheckin = (day: number) => {
-    const dateStr = formatDate(day);
-    return checkinData[dateStr] !== undefined;
-  };
-
-  const getCheckinCount = (day: number) => {
-    const dateStr = formatDate(day);
-    return checkinData[dateStr]?.length || 0;
-  };
+  const hasCheckin = (day: number) => checkinData[formatDate(day)] !== undefined;
+  const getCheckinCount = (day: number) => checkinData[formatDate(day)]?.length || 0;
 
   const selectedCheckins = selectedDate ? checkinData[selectedDate] || [] : [];
 
-  // 计算统计数据
   const totalDays = Object.keys(checkinData).length;
   const totalCheckins = Object.values(checkinData).reduce((sum, arr) => sum + arr.length, 0);
 
-  const prevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
+  const consecutiveDays = useMemo(() => {
+    const dates = Object.keys(checkinData).sort().reverse();
+    if (dates.length === 0) return 0;
+    let streak = 0;
+    const todayStr = formatDate(today.getDate());
+    let check = todayStr;
+    while (dates.includes(check)) {
+      streak++;
+      const prev = new Date(check);
+      prev.setDate(prev.getDate() - 1);
+      check = prev.toISOString().substring(0, 10);
     }
+    return streak;
+  }, [checkinData]);
+
+  const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+
+  const prevMonth = () => {
+    setSelectedDate(null);
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
+    else { setCurrentMonth(currentMonth - 1); }
   };
 
   const nextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
+    setSelectedDate(null);
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
+    else { setCurrentMonth(currentMonth + 1); }
   };
 
   const renderCalendar = () => {
     const days = [];
-    
-    // 填充空白
+
     for (let i = 0; i < firstDay; i++) {
       days.push(<View key={`empty-${i}`} style={styles.dayCell} />);
     }
 
-    // 填充日期
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDate(day);
-      const isToday = dateStr === `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+      const isToday = dateStr === todayStr;
       const isSelected = selectedDate === dateStr;
       const hasData = hasCheckin(day);
-      const checkinCount = getCheckinCount(day);
+      const count = getCheckinCount(day);
 
       days.push(
         <TouchableOpacity
           key={day}
-          style={[
-            styles.dayCell,
-            isToday && styles.dayCellToday,
-            isSelected && styles.dayCellSelected,
-          ]}
+          style={[styles.dayCell, isSelected && styles.dayCellSelected]}
           onPress={() => setSelectedDate(hasData ? dateStr : null)}
+          activeOpacity={0.6}
         >
-          <Text
-            style={[
+          <View style={[isToday && styles.todayRing, isSelected && styles.selectedBg]}>
+            <Text style={[
               styles.dayText,
               isToday && styles.dayTextToday,
               isSelected && styles.dayTextSelected,
-            ]}
-          >
-            {day}
-          </Text>
+            ]}>
+              {day}
+            </Text>
+          </View>
           {hasData && (
             <View style={styles.checkinDot}>
               <View style={styles.checkinDotInner}>
-                <Text style={styles.checkinCount}>{checkinCount}</Text>
+                <Text style={styles.checkinCount}>{count}</Text>
               </View>
             </View>
           )}
@@ -157,134 +175,18 @@ export default function CalendarScreen() {
     return days;
   };
 
-  return (
-    <Screen>
-      <View style={styles.container}>
-        {/* 顶部 */}
-        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-          <Text style={styles.headerTitle}>回忆日历</Text>
-          <Text style={styles.headerSubtitle}>记录你的每一次探索足迹</Text>
-        </View>
-
-        {/* 统计卡片 */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: '#E8F5E9' }]}>
-              <FontAwesome6 name="calendar-check" size={20} color="#2D7D46" />
-            </View>
-            <View style={styles.statInfo}>
-              <Text style={styles.statValue}>{totalDays}</Text>
-              <Text style={styles.statLabel}>打卡天数</Text>
-            </View>
-          </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: '#FFF3E0' }]}>
-              <FontAwesome6 name="camera" size={20} color="#E85D4C" />
-            </View>
-            <View style={styles.statInfo}>
-              <Text style={styles.statValue}>{totalCheckins}</Text>
-              <Text style={styles.statLabel}>打卡照片</Text>
-            </View>
-          </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: '#F3E5F5' }]}>
-              <FontAwesome6 name="fire" size={20} color="#9370DB" />
-            </View>
-            <View style={styles.statInfo}>
-              <Text style={styles.statValue}>5</Text>
-              <Text style={styles.statLabel}>连续打卡</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 日历 */}
-        <View style={styles.calendarContainer}>
-          {/* 月份切换 */}
-          <View style={styles.monthHeader}>
-            <TouchableOpacity onPress={prevMonth} style={styles.monthButton}>
-              <FontAwesome6 name="chevron-left" size={20} color="#666" />
-            </TouchableOpacity>
-            <Text style={styles.monthTitle}>{currentYear}年 {months[currentMonth]}</Text>
-            <TouchableOpacity onPress={nextMonth} style={styles.monthButton}>
-              <FontAwesome6 name="chevron-right" size={20} color="#666" />
-            </TouchableOpacity>
-          </View>
-
-          {/* 星期标题 */}
-          <View style={styles.weekHeader}>
-            {weekDays.map((day, index) => (
-              <View key={index} style={styles.weekCell}>
-                <Text style={[styles.weekText, index === 0 && styles.weekendText]}>
-                  {day}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* 日期网格 */}
-          <View style={styles.daysGrid}>{renderCalendar()}</View>
-        </View>
-
-        {/* 选中日期的打卡记录 */}
-        <View style={[styles.checkinList, { paddingBottom: insets.bottom + 100 }]}>
-          <Text style={styles.checkinListTitle}>
-            {selectedDate ? formatDisplayDate(selectedDate) + ' 的回忆' : '最近打卡'}
-          </Text>
-          <View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.checkinScroll}
-            >
-              {selectedDate && selectedCheckins.length > 0 ? (
-                selectedCheckins.map((checkin: CheckinRecord) => (
-                  <View key={checkin.id} style={styles.checkinCard}>
-                    <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
-                    <View style={styles.checkinOverlay}>
-                      <Text style={styles.checkinName}>{checkin.name}</Text>
-                      <Text style={styles.checkinLocation}>
-                        <FontAwesome6 name="map-marker" size={10} color="#FFF" /> {checkin.location}
-                      </Text>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                Object.entries(checkinData)
-                  .slice(0, 5)
-                  .flatMap(([, checkins]) =>
-                    checkins.map((checkin: CheckinRecord) => (
-                      <View key={checkin.id} style={styles.checkinCard}>
-                        <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
-                        <View style={styles.checkinOverlay}>
-                          <Text style={styles.checkinName}>{checkin.name}</Text>
-                          <Text style={styles.checkinLocation}>
-                            <FontAwesome6 name="map-marker" size={10} color="#FFF" /> {checkin.location}
-                          </Text>
-                        </View>
-                      </View>
-                    ))
-                  )
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Screen>
-  );
-}
-
-const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FDF8F2',
+    backgroundColor: t.bg,
   },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
@@ -293,12 +195,15 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: '#666',
+    color: t.textSecondary,
     marginTop: 2,
+  },
+  headerGlow: {
+    height: 4,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -310,10 +215,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 16,
     padding: 12,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
@@ -331,22 +236,29 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
   },
   statLabel: {
     fontSize: 11,
-    color: '#666',
+    color: t.textSecondary,
   },
   calendarContainer: {
     marginHorizontal: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 20,
     padding: 16,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+    overflow: 'hidden',
+  },
+  calendarTopLine: {
+    height: 3,
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 12,
   },
   monthHeader: {
     flexDirection: 'row',
@@ -358,14 +270,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: t.borderLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   monthTitle: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: t.text,
   },
   weekHeader: {
     flexDirection: 'row',
@@ -379,10 +291,10 @@ const styles = StyleSheet.create({
   weekText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#666',
+    color: t.textSecondary,
   },
   weekendText: {
-    color: '#E85D4C',
+    color: t.danger,
   },
   daysGrid: {
     flexDirection: 'row',
@@ -394,14 +306,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dayCellToday: {},
   dayCellSelected: {},
   dayText: {
     fontSize: 15,
-    color: '#1A1A1A',
+    color: t.text,
+  },
+  todayRing: {
+    borderWidth: 2.5,
+    borderColor: t.primary,
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: t.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  selectedBg: {
+    backgroundColor: t.primary,
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dayTextToday: {
-    color: '#2D7D46',
+    color: t.primary,
     fontWeight: '600',
   },
   dayTextSelected: {
@@ -416,7 +349,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#2D7D46',
+    backgroundColor: t.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -432,11 +365,12 @@ const styles = StyleSheet.create({
   checkinListTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: t.text,
     marginBottom: 12,
   },
   checkinScroll: {
     paddingRight: 16,
+    flexDirection: 'row' as const,
   },
   checkinCard: {
     width: 140,
@@ -467,4 +401,180 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     marginTop: 2,
   },
-});
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 80,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: t.textSecondary,
+  },
+  emptyCheckins: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    gap: 10,
+  },
+  emptyCheckinText: {
+    fontSize: 14,
+    color: t.textTertiary,
+  },
+}), [t]);
+
+  if (isLoading) {
+    return (
+      <Screen>
+        <View style={styles.container}>
+          <View style={[styles.header, { paddingTop: 10 }]}>
+            <Skeleton variant="shimmer" style={{ width: 120, height: 24, borderRadius: 6, marginBottom: 4 }} />
+            <Skeleton variant="shimmer" style={{ width: 180, height: 13, borderRadius: 3 }} />
+          </View>
+
+          {/* Stats skeleton */}
+          <View style={styles.statsContainer}>
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} variant="shimmer" style={{ flex: 1, height: 60, borderRadius: 16 }} />
+            ))}
+          </View>
+
+          {/* Calendar skeleton */}
+          <View style={styles.calendarContainer}>
+            <Skeleton variant="shimmer" style={{ width: '100%', height: 300, borderRadius: 16 }} />
+          </View>
+
+          {/* Checkin list skeleton */}
+          <View style={[styles.checkinList, { paddingBottom: insets.bottom + 100 }]}>
+            <Skeleton variant="shimmer" style={{ width: 80, height: 16, borderRadius: 4, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} variant="shimmer" style={{ width: 140, height: 180, borderRadius: 16 }} />
+              ))}
+            </View>
+          </View>
+        </View>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[t.primary]} tintColor={t.primary} />
+        }
+      >
+        <View style={[styles.header, { paddingTop: 10 }]}>
+          <Text style={styles.headerTitle}>回忆日历</Text>
+          <Text style={styles.headerSubtitle}>记录你的每一次探索足迹</Text>
+        </View>
+        <LinearGradient
+          colors={['rgba(45,125,70,0.12)', 'rgba(45,125,70,0.02)', 'transparent']}
+          locations={[0, 0.5, 1]}
+          style={styles.headerGlow}
+        />
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: t.primaryLight }]}>
+              <FontAwesome6 name="calendar-check" size={20} color={t.primary} />
+            </View>
+            <View style={styles.statInfo}>
+              <Text style={styles.statValue}>{totalDays}</Text>
+              <Text style={styles.statLabel}>打卡天数</Text>
+            </View>
+          </View>
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: t.danger + '30' }]}>
+              <FontAwesome6 name="camera" size={20} color={t.danger} />
+            </View>
+            <View style={styles.statInfo}>
+              <Text style={styles.statValue}>{totalCheckins}</Text>
+              <Text style={styles.statLabel}>打卡照片</Text>
+            </View>
+          </View>
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: t.purple + '30' }]}>
+              <FontAwesome6 name="fire" size={20} color={t.purple} />
+            </View>
+            <View style={styles.statInfo}>
+              <Text style={styles.statValue}>{consecutiveDays}</Text>
+              <Text style={styles.statLabel}>连续打卡</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.calendarContainer}>
+          <LinearGradient
+            colors={[t.primary, t.gold, t.danger]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={styles.calendarTopLine}
+          />
+          <View style={styles.monthHeader}>
+            <TouchableOpacity onPress={prevMonth} style={styles.monthButton} activeOpacity={0.6}>
+              <FontAwesome6 name="chevron-left" size={20} color={t.textSecondary} />
+            </TouchableOpacity>
+            <Text style={styles.monthTitle}>{currentYear}年 {months[currentMonth]}</Text>
+            <TouchableOpacity onPress={nextMonth} style={styles.monthButton} activeOpacity={0.6}>
+              <FontAwesome6 name="chevron-right" size={20} color={t.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.weekHeader}>
+            {weekDays.map((day, index) => (
+              <View key={index} style={styles.weekCell}>
+                <Text style={[styles.weekText, (index === 0 || index === 6) && styles.weekendText]}>
+                  {day}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.daysGrid}>{renderCalendar()}</View>
+        </View>
+
+        <View style={styles.checkinList}>
+          <Text style={styles.checkinListTitle}>
+            {selectedDate ? formatDisplayDate(selectedDate) + ' 的回忆' : '最近打卡'}
+          </Text>
+          {selectedDate && selectedCheckins.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.checkinScroll}>
+              {selectedCheckins.map((checkin) => (
+                <View key={checkin.id} style={styles.checkinCard}>
+                  <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
+                  <View style={styles.checkinOverlay}>
+                    <Text style={styles.checkinName}>{checkin.name}</Text>
+                    <Text style={styles.checkinLocation}>
+                      <FontAwesome6 name="map-marker" size={10} color="#FFF" /> {checkin.location}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          ) : !selectedDate ? (
+            Object.entries(checkinData).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 5).flatMap(([, checkins]) =>
+              checkins.map((checkin) => (
+                <View key={checkin.id} style={styles.checkinCard}>
+                  <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
+                  <View style={styles.checkinOverlay}>
+                    <Text style={styles.checkinName}>{checkin.name}</Text>
+                    <Text style={styles.checkinLocation}>
+                      <FontAwesome6 name="map-marker" size={10} color="#FFF" /> {checkin.location}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )
+          ) : (
+            <View style={styles.emptyCheckins}>
+              <FontAwesome6 name="camera-retro" size={32} color={t.textTertiary} />
+              <Text style={styles.emptyCheckinText}>这天还没有打卡记录</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}

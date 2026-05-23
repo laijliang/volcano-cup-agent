@@ -1,220 +1,164 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getUserProfile, getAchievements, getStats } from '@/services/api';
+import { useUniwind, Uniwind } from 'uniwind';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { Spinner, Avatar, Separator, Skeleton, useToast } from '@/heroui';
 
 const { width } = Dimensions.get('window');
 
-// 成就数据
-const achievements = [
-  { id: '1', name: '初来乍到', icon: 'star', unlocked: true, color: '#FFD700' },
-  { id: '2', name: '五羊探索者', icon: 'map', unlocked: true, color: '#8B4513' },
-  { id: '3', name: '美食猎人', icon: 'utensils', unlocked: true, color: '#E85D4C' },
-  { id: '4', name: '连续7天', icon: 'fire', unlocked: true, color: '#FF6B35' },
-  { id: '5', name: '西关漫步', icon: 'walking', unlocked: false, color: '#DAA520' },
-  { id: '6', name: '博物馆迷', icon: 'landmark', unlocked: false, color: '#2D7D46' },
-  { id: '7', name: '夜景达人', icon: 'moon', unlocked: false, color: '#4682B4' },
-  { id: '8', name: '隐藏成就', icon: 'question', unlocked: false, color: '#999' },
-];
+interface Achievement {
+  id: string;
+  name: string;
+  icon: string;
+  unlocked: boolean;
+  color: string;
+}
 
-// 足迹统计
-const footprintStats = [
-  { label: '探索区域', value: '2/7', icon: 'map', color: '#2D7D46' },
-  { label: '打卡锚点', value: '12', icon: 'map-pin', color: '#E85D4C' },
-  { label: '累计里程', value: '25.6km', icon: 'route', color: '#4682B4' },
-  { label: '获得成就', value: '4/10', icon: 'trophy', color: '#D4A574' },
-];
-
-// 设置菜单
-const settingsMenu = [
-  { id: '1', icon: 'user', title: '个人资料', arrow: true },
-  { id: '2', icon: 'bell', title: '消息通知', arrow: true, badge: 3 },
-  { id: '3', icon: 'shield-halved', title: '隐私设置', arrow: true },
-  { id: '4', icon: 'palette', title: '主题设置', arrow: true },
-  { id: '5', icon: 'question-circle', title: '帮助与反馈', arrow: true },
-  { id: '6', icon: 'info-circle', title: '关于赛博派蒙', arrow: false },
-];
+interface UserProfile {
+  id: string;
+  name: string;
+  avatar: string;
+  level: number;
+  exp: number;
+  created_at: string;
+}
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { theme } = useUniwind();
+  const { toast } = useToast();
+  const t = useAppTheme();
 
-  return (
-    <Screen>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 用户信息卡片 */}
-        <View style={[styles.profileCard, { paddingTop: insets.top + 20 }]}>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' }}
-                style={styles.avatar}
-              />
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelText}>Lv.5</Text>
-              </View>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.userName}>羊城探索者</Text>
-              <Text style={styles.userTitle}>初级寻穗者</Text>
-              <View style={styles.expBar}>
-                <View style={styles.expFill} />
-                <Text style={styles.expText}>1250/2000 EXP</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.editButton}>
-              <FontAwesome6 name="pen" size={16} color="#2D7D46" />
-            </TouchableOpacity>
-          </View>
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showAllAchievements, setShowAllAchievements] = useState(false);
 
-          {/* 阿穗互动入口 */}
-          <View style={styles.agentEntry}>
-            <View style={styles.agentAvatar}>
-              <Image
-                source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=50&h=50&fit=crop' }}
-                style={styles.agentAvatarImg}
-              />
-            </View>
-            <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>阿穗</Text>
-              <Text style={styles.agentStatus}>正在等你聊天～</Text>
-            </View>
-            <TouchableOpacity style={styles.chatButton}>
-              <FontAwesome6 name="comment-dots" size={18} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-        </View>
+  useEffect(() => {
+    loadData();
+  }, []);
 
-        {/* 足迹统计 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>我的足迹</Text>
-          <View style={styles.statsGrid}>
-            {footprintStats.map((stat, index) => (
-              <View key={index} style={styles.statCard}>
-                <View style={[styles.statIcon, { backgroundColor: stat.color + '15' }]}>
-                  <FontAwesome6 name={stat.icon as any} size={20} color={stat.color} />
-                </View>
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
+  const loadData = useCallback(async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setIsLoading(true);
+      else setRefreshing(true);
+      const [userData, achievementsData, statsData] = await Promise.all([
+        getUserProfile(),
+        getAchievements(),
+        getStats(),
+      ]);
+      setUser(userData);
+      setAchievements(achievementsData);
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-        {/* 成就墙 */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>成就墙</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAll}>查看全部</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.achievementsGrid}>
-            {achievements.map((achievement) => (
-              <View
-                key={achievement.id}
-                style={[
-                  styles.achievementCard,
-                  !achievement.unlocked && styles.achievementLocked,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.achievementIcon,
-                    { backgroundColor: achievement.unlocked ? achievement.color + '20' : '#F0F0F0' },
-                  ]}
-                >
-                  <FontAwesome6
-                    name={achievement.icon as any}
-                    size={24}
-                    color={achievement.unlocked ? achievement.color : '#CCC'}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.achievementName,
-                    !achievement.unlocked && styles.achievementNameLocked,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {achievement.unlocked ? achievement.name : '???'}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
+  const handleRefresh = useCallback(() => {
+    loadData(true);
+  }, [loadData]);
 
-        {/* 设置菜单 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>设置</Text>
-          <View style={styles.settingsCard}>
-            {settingsMenu.map((item, index) => (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.settingsItem,
-                  index < settingsMenu.length - 1 && styles.settingsItemBorder,
-                ]}
-              >
-                <View style={styles.settingsLeft}>
-                  <View style={styles.settingsIcon}>
-                    <FontAwesome6 name={item.icon as any} size={18} color="#666" />
-                  </View>
-                  <Text style={styles.settingsTitle}>{item.title}</Text>
-                </View>
-                <View style={styles.settingsRight}>
-                  {item.badge && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{item.badge}</Text>
-                    </View>
-                  )}
-                  {item.arrow && (
-                    <FontAwesome6 name="chevron-right" size={16} color="#CCC" />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+  const handleEditProfile = () => {
+    toast.show({ label: '编辑资料', description: '修改昵称和头像功能即将上线～' });
+  };
 
-        {/* 版本信息 */}
-        <View style={styles.versionInfo}>
-          <Text style={styles.versionText}>赛博派蒙·旅游搭子 v1.0.0</Text>
-        </View>
-      </ScrollView>
-    </Screen>
-  );
-}
+  const handleChatWithAsui = () => {
+    router.navigate('/(tabs)');
+  };
 
-const styles = StyleSheet.create({
+  const handleSettingsPress = (itemId: string) => {
+    switch (itemId) {
+      case '1':
+        handleEditProfile();
+        break;
+      case '2':
+        toast.show({ label: '消息通知', description: '暂无新消息' });
+        break;
+      case '3':
+        toast.show({ label: '隐私设置', description: '功能开发中～' });
+        break;
+      case '4': {
+        const nextTheme = theme === 'dark' ? 'light' : 'dark';
+        Uniwind.setTheme(nextTheme);
+        toast.show({ label: '主题已切换', description: `已切换至${nextTheme === 'dark' ? '深色' : '浅色'}模式`, variant: 'success' });
+        break;
+      }
+      case '5':
+        toast.show({ label: '帮助与反馈', description: '请通过 GitHub Issues 给我们反馈', duration: 6000 });
+        break;
+      case '6':
+        toast.show({ label: '关于赛博派蒙', description: '赛博派蒙 · 旅游搭子 v1.0.0 — 你的广州探索AI伴侣' });
+        break;
+    }
+  };
+
+  const settingsMenu = [
+    { id: '1', icon: 'user', title: '个人资料', arrow: true },
+    { id: '2', icon: 'bell', title: '消息通知', arrow: true, badge: 0 },
+    { id: '3', icon: 'shield-halved', title: '隐私设置', arrow: true },
+    { id: '4', icon: 'palette', title: '主题设置', arrow: true, subtitle: theme === 'dark' ? '深色模式' : '浅色模式' },
+    { id: '5', icon: 'circle-question', title: '帮助与反馈', arrow: true },
+    { id: '6', icon: 'circle-info', title: '关于赛博派蒙', arrow: false },
+  ];
+
+  const expPercent = stats ? Math.min(100, (stats.user_exp / 2000) * 100) : 62.5;
+
+  const displayedAchievements = showAllAchievements ? achievements : achievements.slice(0, 8);
+
+  const footprintStats = [
+    { label: '探索区域', value: stats ? `${stats.unlocked_regions}/${stats.total_regions}` : '2/7', icon: 'map', color: t.primary },
+    { label: '打卡锚点', value: stats ? `${stats.checked_anchors}` : '12', icon: 'map-pin', color: t.danger },
+    { label: '总打卡次数', value: stats ? `${stats.total_checkins}` : '28', icon: 'route', color: t.info },
+    { label: '获得成就', value: stats ? `${stats.unlocked_achievements}/${stats.total_achievements}` : '4/10', icon: 'trophy', color: t.gold },
+  ];
+
+  const styles = useMemo(() => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FDF8F2',
+    backgroundColor: t.bg,
   },
   content: {
     paddingHorizontal: 16,
   },
   profileCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 24,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
+    overflow: 'hidden',
+  },
+  profileCardGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 120,
   },
   profileHeader: {
     flexDirection: 'row',
@@ -223,18 +167,11 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: 'relative',
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 3,
-    borderColor: '#2D7D46',
-  },
   levelBadge: {
     position: 'absolute',
     bottom: -4,
     right: -4,
-    backgroundColor: '#2D7D46',
+    backgroundColor: t.primary,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -253,25 +190,23 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
   },
   userTitle: {
     fontSize: 13,
-    color: '#2D7D46',
+    color: t.primary,
     marginTop: 2,
   },
   expBar: {
     height: 8,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: t.primaryLight,
     borderRadius: 4,
     marginTop: 10,
     overflow: 'hidden',
     position: 'relative',
   },
   expFill: {
-    width: '62.5%',
     height: '100%',
-    backgroundColor: '#2D7D46',
     borderRadius: 4,
   },
   expText: {
@@ -279,21 +214,21 @@ const styles = StyleSheet.create({
     right: 4,
     top: -2,
     fontSize: 9,
-    color: '#666',
+    color: t.textSecondary,
     fontWeight: '500',
   },
   editButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: t.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   agentEntry: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FDF8F2',
+    backgroundColor: t.bg,
     borderRadius: 16,
     padding: 12,
     marginTop: 16,
@@ -304,11 +239,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: '#2D7D46',
-  },
-  agentAvatarImg: {
-    width: '100%',
-    height: '100%',
+    borderColor: t.primary,
   },
   agentInfo: {
     flex: 1,
@@ -317,18 +248,23 @@ const styles = StyleSheet.create({
   agentName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: t.text,
   },
   agentStatus: {
     fontSize: 12,
-    color: '#666',
+    color: t.textSecondary,
     marginTop: 2,
   },
-  chatButton: {
+  chatButtonGradient: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#2D7D46',
+    overflow: 'hidden',
+  },
+  chatButtonInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -344,12 +280,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
     marginBottom: 16,
   },
   seeAll: {
     fontSize: 13,
-    color: '#2D7D46',
+    color: t.primary,
     fontWeight: '500',
   },
   statsGrid: {
@@ -359,15 +295,22 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: (width - 44) / 2,
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
-    shadowColor: '#2D7D46',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
+    overflow: 'hidden',
+  },
+  statCardTopLine: {
+    height: 3,
+    width: '100%',
+    marginTop: -16,
+    marginBottom: 12,
   },
   statIcon: {
     width: 48,
@@ -380,11 +323,11 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1A1A1A',
+    color: t.text,
   },
   statLabel: {
     fontSize: 12,
-    color: '#666',
+    color: t.textSecondary,
     marginTop: 4,
   },
   achievementsGrid: {
@@ -410,17 +353,22 @@ const styles = StyleSheet.create({
   },
   achievementName: {
     fontSize: 11,
-    color: '#1A1A1A',
+    color: t.text,
     fontWeight: '500',
     textAlign: 'center',
   },
   achievementNameLocked: {
-    color: '#999',
+    color: t.textTertiary,
   },
   settingsCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: t.surface,
     borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: t.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   settingsItem: {
     flexDirection: 'row',
@@ -428,10 +376,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 16,
-  },
-  settingsItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
   },
   settingsLeft: {
     flexDirection: 'row',
@@ -441,14 +385,19 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: t.bg,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   settingsTitle: {
     fontSize: 15,
-    color: '#1A1A1A',
+    color: t.text,
+  },
+  settingsSubtitle: {
+    fontSize: 11,
+    color: t.textTertiary,
+    marginTop: 2,
   },
   settingsRight: {
     flexDirection: 'row',
@@ -456,7 +405,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   badge: {
-    backgroundColor: '#E85D4C',
+    backgroundColor: t.danger,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -472,6 +421,235 @@ const styles = StyleSheet.create({
   },
   versionText: {
     fontSize: 12,
-    color: '#CCC',
+    color: t.textTertiary,
   },
-});
+}), [t]);
+
+  if (isLoading) {
+    return (
+      <Screen>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
+        >
+          {/* Profile card skeleton */}
+          <View style={styles.profileCard}>
+            <View style={styles.profileHeader}>
+              <Skeleton variant="shimmer" style={{ width: 72, height: 72, borderRadius: 36 }} />
+              <View style={styles.profileInfo}>
+                <Skeleton variant="shimmer" style={{ width: 120, height: 22, borderRadius: 6, marginBottom: 6 }} />
+                <Skeleton variant="shimmer" style={{ width: 80, height: 14, borderRadius: 4, marginBottom: 12 }} />
+                <Skeleton variant="shimmer" style={{ width: '100%', height: 8, borderRadius: 4 }} />
+              </View>
+            </View>
+            <View style={styles.agentEntry}>
+              <Skeleton variant="shimmer" style={{ width: 44, height: 44, borderRadius: 22 }} />
+              <View style={styles.agentInfo}>
+                <Skeleton variant="shimmer" style={{ width: 60, height: 16, borderRadius: 4, marginBottom: 4 }} />
+                <Skeleton variant="shimmer" style={{ width: 100, height: 12, borderRadius: 3 }} />
+              </View>
+            </View>
+          </View>
+
+          {/* Stats skeleton */}
+          <View style={styles.section}>
+            <Skeleton variant="shimmer" style={{ width: 80, height: 18, borderRadius: 4, marginBottom: 16 }} />
+            <View style={styles.statsGrid}>
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} variant="shimmer" style={{ width: (width - 44) / 2, height: 100, borderRadius: 16, marginBottom: 12 }} />
+              ))}
+            </View>
+          </View>
+
+          {/* Settings skeleton */}
+          <View style={styles.section}>
+            <Skeleton variant="shimmer" style={{ width: 60, height: 18, borderRadius: 4, marginBottom: 16 }} />
+            <View style={styles.settingsCard}>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <View key={i}>
+                  {i > 1 && <Separator />}
+                  <View style={styles.settingsItem}>
+                    <Skeleton variant="shimmer" style={{ width: 36, height: 36, borderRadius: 18 }} />
+                    <Skeleton variant="shimmer" style={{ width: 100, height: 15, borderRadius: 4, marginLeft: 12 }} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[t.primary]} tintColor={t.primary} />
+        }
+      >
+        {/* 用户信息卡片 */}
+        <View style={[styles.profileCard, { paddingTop: 20 }]}>
+          <LinearGradient
+            colors={['rgba(45,125,70,0.08)', 'rgba(45,125,70,0.01)', 'transparent']}
+            style={styles.profileCardGlow}
+          />
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarContainer}>
+              <Avatar size="lg" alt={`${user?.name || 'User'}'s avatar`} className="w-[72px] h-[72px] rounded-full border-3 border-[#2D7D46] shadow-primary">
+                <Avatar.Image
+                  source={{ uri: user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' }}
+                />
+                <Avatar.Fallback />
+              </Avatar>
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelText}>Lv.{user?.level || 5}</Text>
+              </View>
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={styles.userName}>{user?.name || '羊城探索者'}</Text>
+              <Text style={styles.userTitle}>寻穗探索者</Text>
+              <View style={styles.expBar}>
+                <LinearGradient
+                  colors={[t.primary, t.gold]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={[styles.expFill, { width: `${expPercent}%` }]}
+                />
+                <Text style={styles.expText}>{user?.exp || 1250}/2000 EXP</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile} activeOpacity={0.6}>
+              <FontAwesome6 name="pen" size={16} color={t.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* 阿穗互动入口 */}
+          <View style={styles.agentEntry}>
+            <View style={styles.agentAvatar}>
+              <Avatar size="md" alt="Asui's avatar" className="w-[44px] h-[44px] rounded-full">
+                <Avatar.Image
+                  source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=50&h=50&fit=crop' }}
+                />
+                <Avatar.Fallback />
+              </Avatar>
+            </View>
+            <View style={styles.agentInfo}>
+              <Text style={styles.agentName}>阿穗</Text>
+              <Text style={styles.agentStatus}>正在等你聊天～</Text>
+            </View>
+            <LinearGradient
+              colors={[t.primary, '#4DAE60']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={styles.chatButtonGradient}
+            >
+              <TouchableOpacity style={styles.chatButtonInner} onPress={handleChatWithAsui} activeOpacity={0.7}>
+                <FontAwesome6 name="comment-dots" size={18} color="#FFF" />
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
+        </View>
+
+        {/* 足迹统计 */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>我的足迹</Text>
+          <View style={styles.statsGrid}>
+            {footprintStats.map((stat, index) => (
+              <View key={index} style={styles.statCard}>
+                <View style={[styles.statCardTopLine, { backgroundColor: stat.color }]} />
+                <View style={[styles.statIcon, { backgroundColor: stat.color + '25' }]}>
+                  <FontAwesome6 name={stat.icon as any} size={20} color={stat.color} />
+                </View>
+                <Text style={styles.statValue}>{stat.value}</Text>
+                <Text style={styles.statLabel}>{stat.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* 成就墙 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>成就墙</Text>
+            <TouchableOpacity onPress={() => setShowAllAchievements(!showAllAchievements)} activeOpacity={0.5}>
+              <Text style={styles.seeAll}>{showAllAchievements ? '收起' : '查看全部'}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.achievementsGrid}>
+            {displayedAchievements.map((achievement) => (
+              <View
+                key={achievement.id}
+                style={[styles.achievementCard, !achievement.unlocked && styles.achievementLocked]}
+              >
+                <View
+                  style={[
+                    styles.achievementIcon,
+                    { backgroundColor: achievement.unlocked ? achievement.color + '20' : '#F0F0F0' },
+                  ]}
+                >
+                  <FontAwesome6
+                    name={achievement.icon as any}
+                    size={24}
+                    color={achievement.unlocked ? achievement.color : '#CCC'}
+                  />
+                </View>
+                <Text
+                  style={[styles.achievementName, !achievement.unlocked && styles.achievementNameLocked]}
+                  numberOfLines={1}
+                >
+                  {achievement.unlocked ? achievement.name : '???'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* 设置菜单 */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>设置</Text>
+          <View style={styles.settingsCard}>
+            {settingsMenu.map((item, index) => (
+              <View key={item.id}>
+                {index > 0 && <Separator />}
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => handleSettingsPress(item.id)}
+                  activeOpacity={0.5}
+                >
+                <View style={styles.settingsLeft}>
+                  <View style={styles.settingsIcon}>
+                    <FontAwesome6 name={item.icon as any} size={18} color={t.textSecondary} />
+                  </View>
+                  <View>
+                    <Text style={styles.settingsTitle}>{item.title}</Text>
+                    {item.subtitle && (
+                      <Text style={styles.settingsSubtitle}>{item.subtitle}</Text>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.settingsRight}>
+                  {(item.badge ?? 0) > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{item.badge}</Text>
+                    </View>
+                  )}
+                  {item.arrow && (
+                    <FontAwesome6 name="chevron-right" size={16} color={t.textTertiary} />
+                  )}
+                </View>
+              </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* 版本信息 */}
+        <View style={styles.versionInfo}>
+          <Text style={styles.versionText}>赛博派蒙·旅游搭子 v1.0.0</Text>
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
