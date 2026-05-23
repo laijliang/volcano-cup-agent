@@ -20,6 +20,22 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { getRegions, getAnchors, createCheckin, getStats } from '@/services/api';
 
+// 条件导入高德地图 SDK
+let MapView: any = null;
+let Marker: any = null;
+let Callout: any = null;
+let AMapLBS: any = null;
+let Polyline: any = null;
+
+if (Platform.OS !== 'web') {
+  const amap = require('react-native-amap3d');
+  MapView = amap.MapView;
+  Marker = amap.Marker;
+  Callout = amap.Callout;
+  AMapLBS = amap.AMapLBS;
+  Polyline = amap.Polyline;
+}
+
 const { width, height } = Dimensions.get('window');
 
 // 广州坐标（默认中心点）
@@ -79,20 +95,6 @@ const getAnchorIcon = (type: string) => {
   }
 };
 
-// 获取锚点图标名称（高德地图用）
-const getAmapIcon = (type: string) => {
-  switch (type) {
-    case 'landmark':
-      return 'location';
-    case 'food':
-      return 'food';
-    case 'secret':
-      return 'star1';
-    default:
-      return 'marker';
-  }
-};
-
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const [regions, setRegions] = useState<Region[]>([]);
@@ -103,17 +105,30 @@ export default function MapScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [showWebTip, setShowWebTip] = useState(false);
+  const [mapCenter, setMapCenter] = useState(GUANGZHOU_CENTER);
   
   // 打卡相关状态
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
-    loadData();
-    getUserLocation();
+    // Web 平台显示提示
+    if (Platform.OS === 'web') {
+      setShowWebTip(true);
+      setIsLoading(false);
+    } else {
+      loadData();
+      getUserLocation();
+    }
   }, []);
+
+  useEffect(() => {
+    // 区域切换时更新地图中心
+    const center = REGION_COORDINATES[activeRegion] || GUANGZHOU_CENTER;
+    setMapCenter(center);
+  }, [activeRegion]);
 
   const getUserLocation = async () => {
     try {
@@ -128,7 +143,6 @@ export default function MapScreen() {
       }
     } catch (error) {
       console.log('获取位置失败:', error);
-      // 默认使用广州市中心
       setUserLocation(GUANGZHOU_CENTER);
     } finally {
       setLocationLoading(false);
@@ -148,7 +162,6 @@ export default function MapScreen() {
       setStats(statsData);
     } catch (error) {
       console.error('Failed to load data:', error);
-      // 使用默认数据
       setRegions([
         { id: 'yuexiu', name: '越秀', subtitle: '五羊圣地', color: '#8B4513', icon: 'landmark', unlocked: true },
         { id: 'liwan', name: '荔湾', subtitle: '西关风华', color: '#DAA520', icon: 'store', unlocked: true },
@@ -156,74 +169,13 @@ export default function MapScreen() {
         { id: 'tianhe', name: '天河', subtitle: 'CBD繁华', color: '#9370DB', icon: 'building', unlocked: false },
       ]);
       
-      // 广州著名地标的真实坐标
       setAnchors([
-        { 
-          id: '1', 
-          name: '五羊石像', 
-          region_id: 'yuexiu', 
-          latitude: 23.1291, 
-          longitude: 113.2644, 
-          type: 'landmark', 
-          unlocked: true, 
-          checked: true,
-          description: '广州城市标志，五羊传说的发源地'
-        },
-        { 
-          id: '2', 
-          name: '镇海楼', 
-          region_id: 'yuexiu', 
-          latitude: 23.1350, 
-          longitude: 113.2610, 
-          type: 'landmark', 
-          unlocked: true, 
-          checked: true,
-          description: '岭南第一楼，始建于明朝'
-        },
-        { 
-          id: '3', 
-          name: '陈家祠', 
-          region_id: 'yuexiu', 
-          latitude: 23.1295, 
-          longitude: 113.2420, 
-          type: 'landmark', 
-          unlocked: true, 
-          checked: false,
-          description: '广东民间工艺博物馆，建筑艺术瑰宝'
-        },
-        { 
-          id: '4', 
-          name: '点都德', 
-          region_id: 'yuexiu', 
-          latitude: 23.1275, 
-          longitude: 113.2580, 
-          type: 'food', 
-          unlocked: true, 
-          checked: false,
-          description: '老字号茶楼，早茶必去'
-        },
-        { 
-          id: '5', 
-          name: '沙面岛', 
-          region_id: 'liwan', 
-          latitude: 23.1195, 
-          longitude: 113.2440, 
-          type: 'secret', 
-          unlocked: true, 
-          checked: false,
-          description: '隐秘角落，充满历史感的欧式建筑群'
-        },
-        { 
-          id: '6', 
-          name: '永庆坊', 
-          region_id: 'liwan', 
-          latitude: 23.1180, 
-          longitude: 113.2400, 
-          type: 'landmark', 
-          unlocked: false, 
-          checked: false,
-          description: '恩宁路历史文化街区，活化更新典范'
-        },
+        { id: '1', name: '五羊石像', region_id: 'yuexiu', latitude: 23.1291, longitude: 113.2644, type: 'landmark', unlocked: true, checked: true, description: '广州城市标志，五羊传说的发源地' },
+        { id: '2', name: '镇海楼', region_id: 'yuexiu', latitude: 23.1350, longitude: 113.2610, type: 'landmark', unlocked: true, checked: true, description: '岭南第一楼，始建于明朝' },
+        { id: '3', name: '陈家祠', region_id: 'yuexiu', latitude: 23.1295, longitude: 113.2420, type: 'landmark', unlocked: true, checked: false, description: '广东民间工艺博物馆，建筑艺术瑰宝' },
+        { id: '4', name: '点都德', region_id: 'yuexiu', latitude: 23.1275, longitude: 113.2580, type: 'food', unlocked: true, checked: false, description: '老字号茶楼，早茶必去' },
+        { id: '5', name: '沙面岛', region_id: 'liwan', latitude: 23.1195, longitude: 113.2440, type: 'secret', unlocked: true, checked: false, description: '隐秘角落，充满历史感的欧式建筑群' },
+        { id: '6', name: '永庆坊', region_id: 'liwan', latitude: 23.1180, longitude: 113.2400, type: 'landmark', unlocked: false, checked: false, description: '恩宁路历史文化街区，活化更新典范' },
       ]);
     } finally {
       setIsLoading(false);
@@ -232,7 +184,6 @@ export default function MapScreen() {
 
   const currentRegion = regions.find(r => r.id === activeRegion);
   const regionAnchors = anchors.filter(a => a.region_id === activeRegion);
-  const regionCenter = REGION_COORDINATES[activeRegion] || GUANGZHOU_CENTER;
 
   // 拍照打卡
   const handleTakePhoto = async () => {
@@ -284,7 +235,6 @@ export default function MapScreen() {
     try {
       await createCheckin(selectedAnchor.id, selectedImage, currentRegion?.name || '');
       
-      // 更新本地状态
       setAnchors(prev => prev.map(a => 
         a.id === selectedAnchor.id ? { ...a, checked: true } : a
       ));
@@ -316,321 +266,318 @@ export default function MapScreen() {
     );
   };
 
-  // 导航到锚点
+  // 导航到锚点（使用高德地图 App）
   const handleNavigate = () => {
     if (!selectedAnchor) return;
     
-    const scheme = Platform.select({
-      ios: 'ios',
-      android: 'android',
-    });
+    // 高德地图导航链接
+    const url = `androidamap://route?sourceApplication=广州探索&dlat=${selectedAnchor.latitude}&dlon=${selectedAnchor.longitude}&dname=${encodeURIComponent(selectedAnchor.name)}&dev=0&t=1`;
     
-    const url = Platform.select({
-      ios: `amap://navi?sourceApplication=广州探索&poiname=${selectedAnchor.name}&lat=${selectedAnchor.latitude}&lon=${selectedAnchor.longitude}&dev=1`,
-      android: `amap://navi?sourceApplication=广州探索&poiname=${selectedAnchor.name}&lat=${selectedAnchor.latitude}&lon=${selectedAnchor.longitude}&dev=1`,
-    });
-
-    Linking.canOpenURL(url!).then(supported => {
+    Linking.canOpenURL(url).then(supported => {
       if (supported) {
-        Linking.openURL(url!);
+        Linking.openURL(url);
       } else {
-        // 如果没有安装高德地图，尝试打开网页版
-        const webUrl = `https://restapi.amap.com/v3/navigation/regeo?key=c5940539ec568301d498ff1c4625fc2b&location=${selectedAnchor.longitude},${selectedAnchor.latitude}`;
-        Linking.openURL(webUrl);
+        Alert.alert('提示', '无法打开地图导航，请安装高德地图App');
       }
     });
   };
 
-  // 渲染模拟地图（Web端或地图加载前）
-  const renderFallbackMap = () => (
-    <View style={styles.mapContainer}>
-      {/* 地图背景 */}
-      <Image
-        source={{ uri: 'https://images.unsplash.com/photo-1547981609-4b6bfe67ca0b?w=1200&h=800&fit=crop' }}
-        style={styles.mapBackground}
-        resizeMode="cover"
-      />
-      
-      {/* 半透明遮罩 */}
-      <View style={styles.mapOverlay} />
-      
-      {/* 地图中心标记 */}
-      <View style={styles.mapCenter}>
-        <View style={styles.mapCenterPin}>
-          <FontAwesome6 name="map-marker-alt" size={40} color="#2D7D46" />
-        </View>
-        <Text style={styles.mapCenterText}>{currentRegion?.name || '广州'}</Text>
-      </View>
+  // 在地图上标记锚点
+  const handleMarkerClick = (anchor: Anchor) => {
+    setSelectedAnchor(anchor);
+  };
 
-      {/* 模拟锚点标记 */}
-      {regionAnchors.map((anchor, index) => {
-        const positions = [
-          { left: '20%', top: '30%' },
-          { left: '60%', top: '25%' },
-          { left: '35%', top: '55%' },
-          { left: '70%', top: '60%' },
-          { left: '25%', top: '75%' },
-          { left: '75%', top: '40%' },
-        ];
-        const pos = positions[index % positions.length];
-        
-        return (
-          <TouchableOpacity
-            key={anchor.id}
-            style={[
-              styles.fallbackAnchor,
-              { left: pos.left, top: pos.top },
-              anchor.checked && styles.fallbackAnchorChecked,
-            ]}
-            onPress={() => setSelectedAnchor(anchor)}
-          >
-            <View style={[
-              styles.fallbackAnchorInner,
-              { backgroundColor: anchor.checked ? '#2D7D46' : currentRegion?.color || '#2D7D46' }
-            ]}>
-              <FontAwesome6
-                name={getAnchorIcon(anchor.type) as any}
-                size={18}
-                color="#FFF"
-              />
-            </View>
-            {anchor.checked && (
-              <View style={styles.fallbackAnchorBadge}>
-                <FontAwesome6 name="check" size={10} color="#FFF" />
-              </View>
-            )}
-            <Text style={styles.fallbackAnchorLabel} numberOfLines={1}>
-              {anchor.name}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-
-      {/* 定位按钮 */}
-      <TouchableOpacity style={styles.locationButton} onPress={getUserLocation}>
-        {locationLoading ? (
-          <ActivityIndicator size="small" color="#2D7D46" />
-        ) : (
-          <FontAwesome6 name="-location-crosshairs" size={20} color="#2D7D46" />
-        )}
-      </TouchableOpacity>
-
-      {/* 地图加载提示 */}
-      <View style={styles.mapHint}>
-        <FontAwesome6 name="info-circle" size={14} color="#FFF" />
-        <Text style={styles.mapHintText}>点击标记查看详情</Text>
-      </View>
-    </View>
-  );
-
-  if (isLoading) {
+  // Web 平台提示界面
+  if (showWebTip) {
     return (
       <Screen>
-        <View style={[styles.container, styles.loadingContainer]}>
-          <ActivityIndicator size="large" color="#2D7D46" />
-          <Text style={styles.loadingText}>加载地图数据中...</Text>
+        <View style={[styles.webTipContainer, { paddingTop: insets.top + 20 }]}>
+          <View style={styles.webTipIcon}>
+            <FontAwesome6 name="map-location-dot" size={64} color="#4A90A4" />
+          </View>
+          <Text style={styles.webTipTitle}>高德地图需要真机体验</Text>
+          <Text style={styles.webTipDesc}>
+            地图功能需要运行在真机上才能使用{'\n'}
+            请执行以下步骤生成本地项目：
+          </Text>
+          <View style={styles.webTipCode}>
+            <Text style={styles.webTipCodeText}>cd /workspace/projects/projects</Text>
+            <Text style={styles.webTipCodeText}>npx expo prebuild</Text>
+            <Text style={styles.webTipCodeText}>npx expo run:android</Text>
+          </View>
+          <Text style={styles.webTipNote}>
+            高德地图 Key 已配置完成：{'\n'}
+            c5940539ec568301d498ff1c4625fc2b
+          </Text>
         </View>
       </Screen>
     );
   }
 
+  if (isLoading) {
+    return (
+      <Screen style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4A90A4" />
+        <Text style={styles.loadingText}>加载地图数据...</Text>
+      </Screen>
+    );
+  }
+
   return (
-    <Screen>
-      <View style={styles.container}>
-        {/* 顶部区域 */}
-        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-          <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.headerTitle}>广州大世界</Text>
-              <Text style={styles.headerSubtitle}>寻穗纪 · 羊城秘境</Text>
+    <Screen style={styles.container}>
+      {/* 顶部区域 */}
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerTop}>
+          <Text style={styles.headerTitle}>探索地图</Text>
+          {stats && (
+            <View style={styles.statsBadge}>
+              <FontAwesome6 name="check-circle" size={12} color="#52c41a" />
+              <Text style={styles.statsText}>{stats.checked_anchors}/{stats.total_anchors}</Text>
             </View>
-            {stats && (
-              <View style={styles.progressBadge}>
-                <Text style={styles.progressText}>
-                  {stats.checked_anchors}/{stats.total_anchors}
-                </Text>
-              </View>
-            )}
-          </View>
+          )}
         </View>
+        
+        {/* 区域选择 */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.regionScroll}
+        >
+          {regions.map(region => (
+            <TouchableOpacity
+              key={region.id}
+              style={[
+                styles.regionChip,
+                activeRegion === region.id && styles.regionChipActive,
+                !region.unlocked && styles.regionChipLocked,
+              ]}
+              onPress={() => region.unlocked && setActiveRegion(region.id)}
+            >
+              <FontAwesome6 
+                name={region.icon as any} 
+                size={14} 
+                color={activeRegion === region.id ? '#fff' : '#666'} 
+              />
+              <Text style={[
+                styles.regionChipText,
+                activeRegion === region.id && styles.regionChipTextActive,
+              ]}>
+                {region.name}
+              </Text>
+              {!region.unlocked && (
+                <FontAwesome6 name="lock" size={10} color="#999" style={styles.lockIcon} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-        {/* 区域Tab */}
-        <View style={styles.regionTabs}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.regionTabsContent}
-          >
-            {regions.map((region) => (
-              <TouchableOpacity
-                key={region.id}
-                style={[
-                  styles.regionTab,
-                  activeRegion === region.id && styles.regionTabActive,
-                  !region.unlocked && styles.regionTabLocked,
-                ]}
-                onPress={() => region.unlocked && setActiveRegion(region.id)}
-              >
-                <View
-                  style={[
-                    styles.regionTabIcon,
-                    { backgroundColor: region.color + '20' },
-                    activeRegion === region.id && { backgroundColor: region.color },
-                  ]}
-                >
-                  <FontAwesome6
-                    name={region.icon as any}
-                    size={16}
-                    color={activeRegion === region.id ? '#FFF' : region.color}
-                  />
+      {/* 地图区域 */}
+      <View style={styles.mapContainer}>
+        <MapView
+          style={styles.map}
+          centerCoordinate={mapCenter}
+          showsUserLocation={true}
+          userLocationRepresentation={{
+            showsAccuracyRing: true,
+            showsHeadingIndicator: false,
+          }}
+          zoomLevel={14}
+          mapPadding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+        >
+          {/* 锚点标记 */}
+          {regionAnchors.map(anchor => (
+            <Marker
+              key={anchor.id}
+              iconData={anchor.checked ? 0xe6a4 : 0xe677}
+              iconFactory="FontAwesome6"
+              position={{
+                latitude: anchor.latitude,
+                longitude: anchor.longitude,
+              }}
+              onPress={() => handleMarkerClick(anchor)}
+            >
+              <Callout tooltip>
+                <View style={styles.calloutContainer}>
+                  <View style={styles.calloutHeader}>
+                    <View style={[styles.calloutDot, { backgroundColor: anchor.type === 'landmark' ? '#4A90A4' : anchor.type === 'food' ? '#F59E0B' : '#9333EA' }]} />
+                    <Text style={styles.calloutTitle}>{anchor.name}</Text>
+                    {anchor.checked && (
+                      <View style={styles.checkedBadge}>
+                        <FontAwesome6 name="check" size={10} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.calloutDesc}>{anchor.description}</Text>
                 </View>
-                <Text
-                  style={[
-                    styles.regionTabName,
-                    activeRegion === region.id && { color: region.color, fontWeight: '600' },
-                  ]}
-                >
-                  {region.name}
-                </Text>
-                {!region.unlocked && (
-                  <FontAwesome6 name="lock" size={10} color="#999" style={styles.lockIcon} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+              </Callout>
+            </Marker>
+          ))}
+
+          {/* 已解锁区域连接线 */}
+          {userLocation && (
+            <Polyline
+              coordinates={[
+                userLocation,
+                ...regionAnchors.map(a => ({ latitude: a.latitude, longitude: a.longitude }))
+              ]}
+              strokeColor="rgba(74, 144, 164, 0.3)"
+              strokeWidth={2}
+            />
+          )}
+        </MapView>
+
+        {/* 定位按钮 */}
+        <TouchableOpacity 
+          style={[styles.locationBtn, { bottom: 20 }]}
+          onPress={getUserLocation}
+        >
+          <FontAwesome6 name="location-crosshairs" size={20} color="#4A90A4" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 锚点列表 */}
+      <View style={styles.anchorListContainer}>
+        <View style={styles.anchorListHeader}>
+          <Text style={styles.anchorListTitle}>
+            <FontAwesome6 name="map-pin" size={14} color="#4A90A4" /> 
+            {' '}{currentRegion?.name} · {regionAnchors.length} 个锚点
+          </Text>
+          {locationLoading && <ActivityIndicator size="small" color="#4A90A4" />}
         </View>
+        
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.anchorScrollContent}
+        >
+          {regionAnchors.map(anchor => (
+            <TouchableOpacity
+              key={anchor.id}
+              style={[
+                styles.anchorCard,
+                selectedAnchor?.id === anchor.id && styles.anchorCardActive,
+                anchor.checked && styles.anchorCardChecked,
+              ]}
+              onPress={() => handleMarkerClick(anchor)}
+            >
+              <View style={[
+                styles.anchorIcon,
+                { backgroundColor: anchor.type === 'landmark' ? '#4A90A4' : anchor.type === 'food' ? '#F59E0B' : '#9333EA' }
+              ]}>
+                <FontAwesome6 
+                  name={getAnchorIcon(anchor.type) as any} 
+                  size={16} 
+                  color="#fff" 
+                />
+              </View>
+              <Text style={styles.anchorName} numberOfLines={1}>{anchor.name}</Text>
+              {anchor.checked && (
+                <View style={styles.checkedMark}>
+                  <FontAwesome6 name="check" size={10} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-        {/* 地图区域 - 使用模拟地图 */}
-        {renderFallbackMap()}
-
-        {/* 锚点详情卡片 */}
+        {/* 选中锚点详情 */}
         {selectedAnchor && (
           <View style={styles.anchorDetail}>
             <View style={styles.anchorDetailHeader}>
-              <View style={[styles.anchorTypeBadge, { backgroundColor: currentRegion?.color + '20' }]}>
-                <FontAwesome6
-                  name={getAnchorIcon(selectedAnchor.type) as any}
-                  size={14}
-                  color={currentRegion?.color}
+              <View style={[
+                styles.anchorDetailIcon,
+                { backgroundColor: selectedAnchor.type === 'landmark' ? '#4A90A4' : selectedAnchor.type === 'food' ? '#F59E0B' : '#9333EA' }
+              ]}>
+                <FontAwesome6 
+                  name={getAnchorIcon(selectedAnchor.type) as any} 
+                  size={24} 
+                  color="#fff" 
                 />
-                <Text style={[styles.anchorTypeText, { color: currentRegion?.color }]}>
-                  {selectedAnchor.type === 'landmark' ? '地标' : selectedAnchor.type === 'food' ? '美食' : '秘境'}
+              </View>
+              <View style={styles.anchorDetailInfo}>
+                <Text style={styles.anchorDetailName}>{selectedAnchor.name}</Text>
+                <Text style={styles.anchorDetailCoords}>
+                  {selectedAnchor.latitude.toFixed(4)}, {selectedAnchor.longitude.toFixed(4)}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setSelectedAnchor(null)}>
-                <FontAwesome6 name="times" size={18} color="#999" />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={styles.anchorName}>{selectedAnchor.name}</Text>
-            {selectedAnchor.description && (
-              <Text style={styles.anchorDescription}>{selectedAnchor.description}</Text>
-            )}
-            
-            {/* 坐标信息 */}
-            <View style={styles.coordinateInfo}>
-              <FontAwesome6 name="location-dot" size={12} color="#999" />
-              <Text style={styles.coordinateText}>
-                {selectedAnchor.latitude.toFixed(4)}, {selectedAnchor.longitude.toFixed(4)}
-              </Text>
-            </View>
-            
-            <View style={styles.anchorDetailActions}>
-              {selectedAnchor.unlocked ? (
-                <>
-                  <TouchableOpacity 
-                    style={[styles.actionButton, { backgroundColor: currentRegion?.color }]}
-                    onPress={handleCheckin}
-                  >
-                    <FontAwesome6 name="camera" size={16} color="#FFF" />
-                    <Text style={styles.actionButtonText}>
-                      {selectedAnchor.checked ? '再次打卡' : '去打卡'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.actionButtonSecondary, { borderColor: currentRegion?.color }]}
-                    onPress={handleNavigate}
-                  >
-                    <FontAwesome6 name="location-arrow" size={16} color={currentRegion?.color} />
-                    <Text style={[styles.actionButtonTextSecondary, { color: currentRegion?.color }]}>导航</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={styles.lockedInfo}>
-                  <FontAwesome6 name="lock" size={16} color="#999" />
-                  <Text style={styles.lockedText}>完成前置任务解锁</Text>
+              {selectedAnchor.checked && (
+                <View style={styles.checkedBadgeLarge}>
+                  <FontAwesome6 name="check-circle" size={14} color="#52c41a" />
+                  <Text style={styles.checkedText}>已打卡</Text>
                 </View>
+              )}
+            </View>
+            <Text style={styles.anchorDetailDesc}>{selectedAnchor.description}</Text>
+            <View style={styles.anchorDetailActions}>
+              <TouchableOpacity style={styles.navBtn} onPress={handleNavigate}>
+                <FontAwesome6 name=" Location-arrow" size={16} color="#fff" />
+                <Text style={styles.navBtnText}>导航</Text>
+              </TouchableOpacity>
+              {!selectedAnchor.checked && (
+                <TouchableOpacity style={styles.checkinBtn} onPress={handleCheckin}>
+                  <FontAwesome6 name="camera" size={16} color="#fff" />
+                  <Text style={styles.checkinBtnText}>去打卡</Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
         )}
+      </View>
 
-        {/* 底部任务提示 */}
-        <View style={[styles.taskHint, { paddingBottom: insets.bottom + 90 }]}>
-          <View style={styles.taskHintContent}>
-            <View style={styles.taskHintIcon}>
-              <FontAwesome6 name="scroll" size={16} color="#2D7D46" />
+      {/* 打卡模态框 */}
+      <Modal
+        visible={checkinModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setCheckinModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>确认打卡</Text>
+              <TouchableOpacity onPress={() => setCheckinModalVisible(false)}>
+                <FontAwesome6 name="xmark" size={20} color="#666" />
+              </TouchableOpacity>
             </View>
-            <View style={styles.taskHintText}>
-              <Text style={styles.taskHintTitle}>当前任务：探索{currentRegion?.subtitle || '广州'}</Text>
-              <Text style={styles.taskHintSubtitle}>
-                已完成 {regionAnchors.filter(a => a.checked).length}/{regionAnchors.length} 个锚点
-              </Text>
+            
+            {selectedImage && (
+              <Image 
+                source={{ uri: selectedImage }} 
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+            )}
+            
+            <Text style={styles.checkinConfirmText}>
+              在「{selectedAnchor?.name}」完成打卡？
+            </Text>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.cancelBtn}
+                onPress={() => setCheckinModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.confirmBtn}
+                onPress={handleConfirmCheckin}
+                disabled={isCheckingIn}
+              >
+                {isCheckingIn ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <FontAwesome6 name="check" size={16} color="#fff" />
+                    <Text style={styles.confirmBtnText}>确认打卡</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.taskHintButton}>
-              <FontAwesome6 name="chevron-right" size={16} color="#FFF" />
-            </TouchableOpacity>
           </View>
         </View>
-
-        {/* 打卡确认弹窗 */}
-        <Modal
-          visible={checkinModalVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setCheckinModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>确认打卡</Text>
-                <TouchableOpacity onPress={() => setCheckinModalVisible(false)}>
-                  <FontAwesome6 name="times" size={20} color="#666" />
-                </TouchableOpacity>
-              </View>
-              
-              {selectedImage && (
-                <Image source={{ uri: selectedImage }} style={styles.previewImage} />
-              )}
-              
-              <Text style={styles.checkinHint}>
-                确认在「{selectedAnchor?.name}」进行打卡？
-              </Text>
-              
-              <View style={styles.modalButtons}>
-                <TouchableOpacity 
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={() => setCheckinModalVisible(false)}
-                >
-                  <Text style={styles.cancelButtonText}>取消</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.modalButton, styles.confirmButton]}
-                  onPress={handleConfirmCheckin}
-                  disabled={isCheckingIn}
-                >
-                  {isCheckingIn ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>确认打卡</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      </View>
+      </Modal>
     </Screen>
   );
 }
@@ -638,398 +585,368 @@ export default function MapScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FDF8F2',
+    backgroundColor: '#f5f7fa',
   },
   loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f5f7fa',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
     color: '#666',
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFF',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: '#2D7D46',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1A1A1A',
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: '#2D7D46',
-    marginTop: 2,
-  },
-  progressBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2D7D46',
-  },
-  regionTabs: {
-    backgroundColor: '#FFF',
-    paddingVertical: 12,
-  },
-  regionTabsContent: {
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  regionTab: {
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    minWidth: 60,
-  },
-  regionTabActive: {
-    backgroundColor: '#F5F5F5',
-  },
-  regionTabLocked: {
-    opacity: 0.6,
-  },
-  regionTabIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  regionTabName: {
-    fontSize: 12,
-    color: '#666',
-  },
-  lockIcon: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-  },
-  
-  // 地图容器
-  mapContainer: {
+  // Web 提示样式
+  webTipContainer: {
     flex: 1,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#E8F5E9',
-    position: 'relative',
-  },
-  mapBackground: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(232, 245, 233, 0.3)',
-  },
-  mapCenter: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    transform: [{ translateX: -40 }, { translateY: -40 }],
-    alignItems: 'center',
-  },
-  mapCenterPin: {
-    backgroundColor: '#FFF',
-    padding: 12,
-    borderRadius: 30,
-    shadowColor: '#2D7D46',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  mapCenterText: {
-    marginTop: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2D7D46',
-    backgroundColor: '#FFF',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  
-  // 模拟锚点标记
-  fallbackAnchor: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  fallbackAnchorInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 3,
-    borderColor: '#FFF',
+    padding: 30,
+    backgroundColor: '#f5f7fa',
   },
-  fallbackAnchorChecked: {
-    borderColor: '#FFD700',
-    borderWidth: 4,
-  },
-  fallbackAnchorBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#4CAF50',
+  webTipIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#E8F4F8',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFF',
+    marginBottom: 24,
   },
-  fallbackAnchorLabel: {
-    marginTop: 4,
-    fontSize: 11,
+  webTipTitle: {
+    fontSize: 22,
     fontWeight: '600',
     color: '#333',
-    backgroundColor: '#FFF',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    overflow: 'hidden',
-    maxWidth: 60,
+    marginBottom: 12,
   },
-  
-  // 定位按钮
-  locationButton: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+  webTipDesc: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 20,
   },
-  
-  // 地图提示
-  mapHint: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
+  webTipCode: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    width: '100%',
   },
-  mapHintText: {
-    fontSize: 12,
-    color: '#FFF',
+  webTipCodeText: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 14,
+    color: '#52c41a',
+    marginVertical: 4,
   },
-  
-  // 锚点详情卡片
-  anchorDetail: {
-    position: 'absolute',
-    bottom: 100,
-    left: 16,
-    right: 16,
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
+  webTipNote: {
+    fontSize: 13,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  anchorDetailHeader: {
+  // 顶部区域
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  anchorTypeBadge: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333',
+  },
+  statsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f6ffed',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
   },
-  anchorTypeText: {
-    fontSize: 12,
+  statsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#52c41a',
+  },
+  regionScroll: {
+    flexGrow: 0,
+  },
+  regionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 10,
+    gap: 6,
+  },
+  regionChipActive: {
+    backgroundColor: '#4A90A4',
+  },
+  regionChipLocked: {
+    opacity: 0.5,
+  },
+  regionChipText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  regionChipTextActive: {
+    color: '#fff',
     fontWeight: '600',
   },
-  anchorName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 6,
+  lockIcon: {
+    marginLeft: 4,
   },
-  anchorDescription: {
+  // 地图区域
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  map: {
+    flex: 1,
+  },
+  locationBtn: {
+    position: 'absolute',
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  // 气泡样式
+  calloutContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    minWidth: 180,
+    maxWidth: 260,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  calloutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 8,
+  },
+  calloutDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  calloutTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  checkedBadge: {
+    backgroundColor: '#52c41a',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calloutDesc: {
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
+  },
+  // 锚点列表
+  anchorListContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  anchorListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  anchorListTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  anchorScrollContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  anchorCard: {
+    width: 88,
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 14,
+    marginHorizontal: 4,
+    position: 'relative',
+  },
+  anchorCardActive: {
+    backgroundColor: '#E8F4F8',
+    borderWidth: 2,
+    borderColor: '#4A90A4',
+  },
+  anchorCardChecked: {
+    backgroundColor: '#f0fff4',
+  },
+  anchorIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  anchorName: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  checkedMark: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#52c41a',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // 选中锚点详情
+  anchorDetail: {
+    padding: 16,
+    backgroundColor: '#fafafa',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  anchorDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 12,
+  },
+  anchorDetailIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  anchorDetailInfo: {
+    flex: 1,
+  },
+  anchorDetailName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 2,
+  },
+  anchorDetailCoords: {
+    fontSize: 12,
+    color: '#999',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  checkedBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f6ffed',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 4,
+  },
+  checkedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#52c41a',
+    marginLeft: 4,
+  },
+  anchorDetailDesc: {
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
-    marginBottom: 8,
-  },
-  coordinateInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 16,
-  },
-  coordinateText: {
-    fontSize: 12,
-    color: '#999',
+    marginBottom: 14,
   },
   anchorDetailActions: {
     flexDirection: 'row',
     gap: 12,
   },
-  actionButton: {
+  navBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
+    backgroundColor: '#4A90A4',
+    paddingVertical: 12,
+    borderRadius: 12,
     gap: 8,
   },
-  actionButtonText: {
-    color: '#FFF',
+  navBtnText: {
+    color: '#fff',
     fontSize: 15,
     fontWeight: '600',
   },
-  actionButtonSecondary: {
+  checkinBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
+    backgroundColor: '#F59E0B',
+    paddingVertical: 12,
+    borderRadius: 12,
     gap: 8,
   },
-  actionButtonTextSecondary: {
+  checkinBtnText: {
+    color: '#fff',
     fontSize: 15,
     fontWeight: '600',
   },
-  lockedInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 16,
-    gap: 8,
-  },
-  lockedText: {
-    color: '#999',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  
-  // 底部任务提示
-  taskHint: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  taskHintContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  taskHintIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#E8F5E9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  taskHintText: {
-    flex: 1,
-  },
-  taskHintTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A1A',
-  },
-  taskHintSubtitle: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
-  taskHintButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#2D7D46',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  // 模态框
+  // 打卡模态框
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    width: width * 0.88,
-    backgroundColor: '#FFF',
-    borderRadius: 28,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 20,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1038,58 +955,51 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1A1A1A',
-    letterSpacing: 0.3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
   },
   previewImage: {
     width: '100%',
-    height: 220,
+    height: 200,
     borderRadius: 16,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
+    marginBottom: 16,
   },
-  checkinHint: {
+  checkinConfirmText: {
     fontSize: 15,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
+    marginBottom: 20,
   },
-  modalButtons: {
+  modalActions: {
     flexDirection: 'row',
-    gap: 14,
+    gap: 12,
   },
-  modalButton: {
+  cancelBtn: {
     flex: 1,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
     alignItems: 'center',
   },
-  cancelButton: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    color: '#666',
+  cancelBtnText: {
+    fontSize: 15,
     fontWeight: '600',
+    color: '#666',
   },
-  confirmButton: {
-    backgroundColor: '#2D7D46',
-    shadowColor: '#2D7D46',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+  confirmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#4A90A4',
+    gap: 8,
   },
-  confirmButtonText: {
-    fontSize: 16,
-    color: '#FFF',
-    fontWeight: '700',
+  confirmBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
