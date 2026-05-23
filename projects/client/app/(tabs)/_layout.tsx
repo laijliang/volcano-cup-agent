@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useCSSVariable } from 'uniwind';
@@ -15,17 +15,30 @@ export default function TabLayout() {
 
   let tabBarStyle: any = {
     backgroundColor: background,
-    borderTopWidth: 1,
-    borderTopColor: border,
+    borderTopWidth: 0,
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? insets.bottom : 8,
-    height: Platform.OS === 'ios' ? 85 : 65,
+    paddingBottom: Platform.OS === 'ios' ? insets.bottom : 12,
+    height: Platform.OS === 'ios' ? 88 : 72,
+    // 现代化阴影效果
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 10,
+    // 顶部圆角
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    // 内边距
+    marginHorizontal: 8,
+    marginBottom: 8,
   };
 
   if (Platform.OS === 'web') {
     tabBarStyle = {
       ...tabBarStyle,
       height: 'auto',
+      borderRadius: 24,
+      marginBottom: 12,
     };
   }
 
@@ -37,9 +50,10 @@ export default function TabLayout() {
         tabBarActiveTintColor: accent,
         tabBarInactiveTintColor: muted,
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
-          marginTop: 2,
+          fontSize: 12,
+          fontWeight: '600',
+          marginTop: 4,
+          letterSpacing: 0.3,
         },
       }}
     >
@@ -48,7 +62,7 @@ export default function TabLayout() {
         options={{
           title: '首页',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="house" size={22} color={color} />
+            <FontAwesome6 name="house" size={24} color={color} solid />
           ),
         }}
       />
@@ -57,7 +71,7 @@ export default function TabLayout() {
         options={{
           title: '地图',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="map" size={22} color={color} />
+            <FontAwesome6 name="map-location" size={24} color={color} />
           ),
         }}
       />
@@ -66,7 +80,7 @@ export default function TabLayout() {
         options={{
           title: '任务',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="scroll" size={22} color={color} />
+            <FontAwesome6 name="scroll" size={24} color={color} solid />
           ),
         }}
       />
@@ -75,7 +89,7 @@ export default function TabLayout() {
         options={{
           title: '日历',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="calendar-days" size={22} color={color} />
+            <FontAwesome6 name="calendar-days" size={24} color={color} solid />
           ),
         }}
       />
@@ -84,7 +98,7 @@ export default function TabLayout() {
         options={{
           title: '我的',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="user" size={22} color={color} />
+            <FontAwesome6 name="circle-user" size={24} color={color} />
           ),
         }}
       />

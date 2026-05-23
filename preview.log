@@ -82,3 +82,63 @@ Error: Unauthorized request from https://fc875553-acab-4826-871c-5401301e9124.de
     at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
     at app.handle (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:186:3)
  LOG  [web] Logs will appear in the browser console
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
+Web node_modules/.pnpm/expo-router@6.0.23_hwhz3gkr3fwpkbq5xe4svvrbua/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 65ms node_modules/.pnpm/expo-router@6.0.23_hwhz3gkr3fwpkbq5xe4svvrbua/node_modules/expo-router/entry.js (1 module)
+Error: Unauthorized request from https://fc875553-acab-4826-871c-5401301e9124.dev.coze.site. This may happen because of a conflicting browser extension to intercept HTTP requests. Disable browser extensions or use incognito mode and try again.
+    at /workspace/projects/projects/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.28.6_@typ_trshaxjxdle3geqvxb73nskfnq/node_modules/@expo/cli/src/start/server/middleware/CorsMiddleware.ts:51:11
+    at call (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at /workspace/projects/projects/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.28.6_@typ_trshaxjxdle3geqvxb73nskfnq/node_modules/@expo/cli/src/start/server/middleware/ContextModuleSourceMapsMiddleware.ts:29:7
+    at call (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at middleware (/workspace/projects/projects/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.28.6_@typ_trshaxjxdle3geqvxb73nskfnq/node_modules/@expo/cli/src/start/server/middleware/ExpoMiddleware.ts:62:16)
+    at call (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at app.handle (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:186:3)
+ LOG  [web] Logs will appear in the browser console
+Error: Unauthorized request from https://fc875553-acab-4826-871c-5401301e9124.dev.coze.site. This may happen because of a conflicting browser extension to intercept HTTP requests. Disable browser extensions or use incognito mode and try again.
+    at /workspace/projects/projects/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.28.6_@typ_trshaxjxdle3geqvxb73nskfnq/node_modules/@expo/cli/src/start/server/middleware/CorsMiddleware.ts:51:11
+    at call (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at /workspace/projects/projects/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.28.6_@typ_trshaxjxdle3geqvxb73nskfnq/node_modules/@expo/cli/src/start/server/middleware/ContextModuleSourceMapsMiddleware.ts:29:7
+    at call (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at middleware (/workspace/projects/projects/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.23_expo@54.0.33_react-native@0.81.5_@babel+core@7.28.6_@typ_trshaxjxdle3geqvxb73nskfnq/node_modules/@expo/cli/src/start/server/middleware/ExpoMiddleware.ts:62:16)
+    at call (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at app.handle (/workspace/projects/projects/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:186:3)
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
+| [91mUniwind Error - Theme dark is missing variable --primary[0m
+| [91mUniwind Error - Theme dark is missing variable --primary-foreground[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary[0m
+| [91mUniwind Error - Theme dark is missing variable --secondary-foreground[0m
+| [91mUniwind Error - All themes must have the same variables[0m
