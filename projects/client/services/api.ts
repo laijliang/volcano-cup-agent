@@ -9,18 +9,50 @@ export interface ChatMessage {
   time: string;
 }
 
-// 发送消息获取回复（非流式）
-export async function sendChatMessage(message: string): Promise<{ reply: string; agent: string; timestamp: string }> {
+export interface ChatContext {
+  userId?: string;
+  userName?: string;
+  currentRegion?: string;
+  nearestAnchor?: string;
+  questProgress?: string;
+  unlockedRegions?: string[];
+  recentCheckins?: string[];
+  consecutiveDays?: number;
+  timeOfDay?: string;
+}
+
+// 发送消息获取阿穗回复
+export async function sendChatMessage(
+  message: string,
+  context?: ChatContext
+): Promise<{ reply: string; agent: string; timestamp: string }> {
   const response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, context }),
   });
 
   if (!response.ok) {
     throw new Error('Failed to send message');
+  }
+
+  return response.json();
+}
+
+// 发送消息给 NPC（支线任务触发）
+export async function sendNpcMessage(
+  message: string,
+  npcId: string,
+  context?: ChatContext
+): Promise<{ reply: string; agent: string; timestamp: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/npc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, npcId, context }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to send NPC message');
   }
 
   return response.json();
