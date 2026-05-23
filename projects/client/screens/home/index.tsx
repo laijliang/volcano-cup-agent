@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '@/components/Screen';
@@ -19,8 +19,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { sendChatMessage, createCheckin, getStats, type ChatMessage } from '@/services/api';
 import { Spinner, Dialog, Skeleton, useToast } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
-
-const { width } = Dimensions.get('window');
 
 // 初始对话数据
 const initialMessages: ChatMessage[] = [
@@ -61,6 +59,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const t = useAppTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const scrollViewRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState(initialMessages);
   const [inputText, setInputText] = useState('');
@@ -459,7 +458,7 @@ export default function HomeScreen() {
     borderColor: t.primaryLight,
   },
   messageContent: {
-    maxWidth: width * 0.72,
+    maxWidth: windowWidth * 0.72,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 20,
@@ -635,7 +634,7 @@ export default function HomeScreen() {
     color: '#FFF',
     fontWeight: '700',
   },
-  }), [t]);
+  }), [t, windowWidth]);
 
   return (
     <Screen>

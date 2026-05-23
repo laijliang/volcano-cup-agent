@@ -1,7 +1,6 @@
-import { View } from 'react-native';
+import type { ViewStyle } from 'react-native';
 
 // Native map is handled by react-native-amap3d (Android/iOS only).
-// This stub is used by Metro on native platforms and provides types for TypeScript.
 
 interface Anchor {
   id: string;
@@ -21,6 +20,7 @@ export interface LeafletMapProps {
   onSelectAnchor: (anchor: Anchor) => void;
   centerLat: number;
   centerLng: number;
+  style?: ViewStyle;
 }
 
 export default function LeafletMap(_props: LeafletMapProps) {

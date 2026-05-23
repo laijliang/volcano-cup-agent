@@ -9,7 +9,6 @@ import {
   Image,
   Platform,
   Linking,
-  RefreshControl,
 } from 'react-native';
 import { Screen } from '@/components/Screen';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -190,6 +189,42 @@ export default function MapScreen() {
   loadingContainer: {
     flex: 1,
     backgroundColor: t.bg,
+  },
+  // 地图全屏布局
+  mapFullscreen: {
+    flex: 1,
+    minHeight: 200,
+  },
+  mapWrapper: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderTopColor: t.border,
+  },
+  // 底部浮动面板
+  bottomPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: t.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    shadowColor: t.shadowColor,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+    maxHeight: '50%',
+  },
+  bottomPanelHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: t.border,
+    alignSelf: 'center',
+    marginBottom: 12,
   },
   loadingContent: {
     flex: 1,
@@ -483,7 +518,7 @@ export default function MapScreen() {
   if (isLoading) {
     return (
       <Screen style={styles.loadingContainer}>
-        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+        <View style={{ flex: 1 }}>
           <View style={[styles.header, { paddingTop: 10 }]}>
             <Skeleton variant="shimmer" style={{ width: 120, height: 24, borderRadius: 6, marginBottom: 12 }} />
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -493,9 +528,10 @@ export default function MapScreen() {
             </View>
           </View>
 
-          <Skeleton variant="shimmer" style={{ height: 220, margin: 16, borderRadius: 20 }} />
+          <Skeleton variant="shimmer" style={{ flex: 1, minHeight: 200 }} />
 
-          <View style={styles.anchorListContainer}>
+          <View style={styles.bottomPanel}>
+            <View style={styles.bottomPanelHandle} />
             <Skeleton variant="shimmer" style={{ width: 120, height: 15, borderRadius: 4, marginLeft: 16, marginBottom: 12 }} />
             <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8 }}>
               {[1, 2, 3, 4].map((i) => (
@@ -503,21 +539,15 @@ export default function MapScreen() {
               ))}
             </View>
           </View>
-        </ScrollView>
+        </View>
       </Screen>
     );
   }
 
   return (
     <Screen style={styles.container}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[t.primary]} tintColor={t.primary} />
-        }
-      >
-        {/* 顶部区域 */}
+      <View style={{ flex: 1 }}>
+        {/* 顶部区域 — 紧凑型 */}
         <View style={[styles.header, { paddingTop: 10 }]}>
           <View style={styles.headerTop}>
             <Text style={styles.headerTitle}>探索地图</Text>
@@ -563,42 +593,47 @@ export default function MapScreen() {
             ))}
           </ScrollView>
         </View>
-        <LinearGradient
-          colors={['rgba(45,125,70,0.12)', 'rgba(45,125,70,0.02)', 'transparent']}
-          locations={[0, 0.5, 1]}
-          style={styles.headerGlow}
-        />
 
-        {/* 地图区域 — Web 使用 Leaflet，原生使用 placeholder */}
-        {isWeb ? (
-          <LeafletMap
-            anchors={regionAnchors}
-            selectedAnchorId={selectedAnchor?.id || null}
-            onSelectAnchor={setSelectedAnchor}
-            centerLat={regionAnchors[0]?.latitude || 23.1291}
-            centerLng={regionAnchors[0]?.longitude || 113.2644}
-          />
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <LinearGradient
-              colors={['rgba(253,248,242,0.6)', 'rgba(45,125,70,0.05)', 'rgba(253,248,242,0.4)']}
-              style={styles.mapPlaceholderGradient}
+        {/* 地图 — 填充全部剩余空间 */}
+        <View style={styles.mapWrapper}>
+          {isWeb ? (
+            <LeafletMap
+              anchors={regionAnchors}
+              selectedAnchorId={selectedAnchor?.id || null}
+              onSelectAnchor={setSelectedAnchor}
+              centerLat={regionAnchors[0]?.latitude || 23.1291}
+              centerLng={regionAnchors[0]?.longitude || 113.2644}
             />
-            <View style={styles.mapPlaceholderContent}>
-              <FontAwesome6 name="map-location-dot" size={48} color={currentRegion?.color || t.info} />
-              <Text style={styles.mapPlaceholderTitle}>{currentRegion?.name} · {currentRegion?.subtitle}</Text>
-              <Text style={styles.mapPlaceholderHint}>地图加载中...</Text>
+          ) : (
+            <View style={[styles.mapPlaceholder, { flex: 1, margin: 0, borderRadius: 0, borderWidth: 0 }]}>
+              <LinearGradient
+                colors={['rgba(253,248,242,0.6)', 'rgba(45,125,70,0.05)', 'rgba(253,248,242,0.4)']}
+                style={styles.mapPlaceholderGradient}
+              />
+              <View style={styles.mapPlaceholderContent}>
+                <FontAwesome6 name="map-location-dot" size={48} color={currentRegion?.color || t.info} />
+                <Text style={styles.mapPlaceholderTitle}>{currentRegion?.name} · {currentRegion?.subtitle}</Text>
+                <Text style={styles.mapPlaceholderHint}>地图加载中...</Text>
+              </View>
             </View>
-          </View>
-        )}
+          )}
+        </View>
 
-        {/* 锚点列表 */}
-        <View style={styles.anchorListContainer}>
+        {/* 底部浮动面板 */}
+        <View style={styles.bottomPanel}>
+          <View style={styles.bottomPanelHandle} />
+
+          {/* 锚点卡片行 */}
           <View style={styles.anchorListHeader}>
             <Text style={styles.anchorListTitle}>
               <FontAwesome6 name="map-pin" size={14} color={t.info} />
               {' '}{currentRegion?.name} · {regionAnchors.length} 个锚点
             </Text>
+            {selectedAnchor && (
+              <TouchableOpacity onPress={() => setSelectedAnchor(null)}>
+                <FontAwesome6 name="xmark" size={16} color={t.textTertiary} />
+              </TouchableOpacity>
+            )}
           </View>
 
           <ScrollView
@@ -682,7 +717,7 @@ export default function MapScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
+      </View>
 
       {/* 打卡确认弹窗 */}
       <Dialog isOpen={checkinModalVisible} onOpenChange={setCheckinModalVisible}>

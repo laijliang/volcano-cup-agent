@@ -1,6 +1,9 @@
 // TypeScript types for LeafletMap component.
 // Metro resolves to LeafletMap.web.tsx (web) or LeafletMap.native.tsx (native) at build time.
 
+import type { ViewStyle } from 'react-native';
+import { View } from 'react-native';
+
 interface Anchor {
   id: string;
   name: string;
@@ -19,6 +22,7 @@ export interface LeafletMapProps {
   onSelectAnchor: (anchor: Anchor) => void;
   centerLat: number;
   centerLng: number;
+  style?: ViewStyle;
 }
 
 export default function LeafletMap(_props: LeafletMapProps) {

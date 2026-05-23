@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View } from 'react-native';
+import { View, type ViewStyle } from 'react-native';
 
 // ── Load leaflet from CDN (avoids Metro module resolution issues with pnpm symlinks) ──
 
@@ -43,12 +43,13 @@ interface Anchor {
   description?: string;
 }
 
-interface LeafletMapProps {
+export interface LeafletMapProps {
   anchors: Anchor[];
   selectedAnchorId: string | null;
   onSelectAnchor: (anchor: Anchor) => void;
   centerLat: number;
   centerLng: number;
+  style?: ViewStyle;
 }
 
 // ── Component ──
@@ -59,6 +60,7 @@ export default function LeafletMap({
   onSelectAnchor,
   centerLat,
   centerLng,
+  style,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
@@ -109,30 +111,37 @@ export default function LeafletMap({
     const L = (window as any).L;
     if (!map || !L) return;
 
-    // Clear old markers
     markersRef.current.forEach((m: any) => map.removeLayer(m));
     markersRef.current = [];
 
     anchors.forEach((anchor) => {
       const isSelected = selectedAnchorId === anchor.id;
-      const size: [number, number] = isSelected ? [36, 54] : [28, 42];
-      const anchorPt: [number, number] = isSelected ? [14, 50] : [11, 39];
+      const size = isSelected ? 32 : 24;
+      const borderWidth = isSelected ? 3 : 2;
       const color = anchor.checked ? '#3FB950'
         : anchor.type === 'landmark' ? '#8B4513'
         : anchor.type === 'food' ? '#E85D4C'
         : '#9370DB';
 
+      // Upright circular marker with a small white center dot
       const icon = L.divIcon({
         className: 'custom-marker',
         html: `<div style="
-          width:${size[0]}px;height:${size[1]}px;
-          background:${color};border:3px solid #fff;
-          border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+          width:${size}px;height:${size}px;
+          background:${color};
+          border:${borderWidth}px solid #fff;
+          border-radius:50%;
           box-shadow:0 2px 8px rgba(0,0,0,0.3);
-        "></div>`,
-        iconSize: size,
-        iconAnchor: anchorPt,
-        popupAnchor: [0, -size[1]],
+          display:flex;align-items:center;justify-content:center;
+        ">
+          <div style="
+            width:${size * 0.28}px;height:${size * 0.28}px;
+            background:#fff;border-radius:50%;
+          "></div>
+        </div>`,
+        iconSize: [size, size] as [number, number],
+        iconAnchor: [size / 2, size] as [number, number],
+        popupAnchor: [0, -size / 2],
       });
 
       const marker = L.marker([anchor.latitude, anchor.longitude], { icon })
@@ -160,14 +169,14 @@ export default function LeafletMap({
   return (
     <View
       ref={containerRef as any}
-      style={{
-        height: 280,
-        margin: 16,
-        borderRadius: 20,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: '#E0E0E0',
-      }}
+      style={[
+        {
+          flex: 1,
+          minHeight: 200,
+          overflow: 'hidden',
+        },
+        style,
+      ]}
     />
   );
 }

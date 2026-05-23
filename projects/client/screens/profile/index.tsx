@@ -5,7 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -17,8 +17,6 @@ import { getUserProfile, getAchievements, getStats } from '@/services/api';
 import { useUniwind, Uniwind } from 'uniwind';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { Spinner, Avatar, Separator, Skeleton, useToast } from '@/heroui';
-
-const { width } = Dimensions.get('window');
 
 interface Achievement {
   id: string;
@@ -43,6 +41,7 @@ export default function ProfileScreen() {
   const { theme } = useUniwind();
   const { toast } = useToast();
   const t = useAppTheme();
+  const { width: windowWidth } = useWindowDimensions();
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -294,7 +293,7 @@ export default function ProfileScreen() {
     gap: 12,
   },
   statCard: {
-    width: (width - 44) / 2,
+    width: (windowWidth - 44) / 2,
     backgroundColor: t.surface,
     borderRadius: 16,
     padding: 16,
@@ -336,7 +335,7 @@ export default function ProfileScreen() {
     gap: 12,
   },
   achievementCard: {
-    width: (width - 56) / 4,
+    width: (windowWidth - 56) / 4,
     alignItems: 'center',
     padding: 8,
   },
@@ -423,7 +422,7 @@ export default function ProfileScreen() {
     fontSize: 12,
     color: t.textTertiary,
   },
-}), [t]);
+}), [t, windowWidth]);
 
   if (isLoading) {
     return (
@@ -456,7 +455,7 @@ export default function ProfileScreen() {
             <Skeleton variant="shimmer" style={{ width: 80, height: 18, borderRadius: 4, marginBottom: 16 }} />
             <View style={styles.statsGrid}>
               {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} variant="shimmer" style={{ width: (width - 44) / 2, height: 100, borderRadius: 16, marginBottom: 12 }} />
+                <Skeleton key={i} variant="shimmer" style={{ width: (windowWidth - 44) / 2, height: 100, borderRadius: 16, marginBottom: 12 }} />
               ))}
             </View>
           </View>
