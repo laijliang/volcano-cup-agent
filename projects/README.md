@@ -1,261 +1,290 @@
-# Expo App + Express.js
+# 赛博派蒙 · 旅游搭子
 
-## 目录结构规范（严格遵循）
+> AI 驱动的广州城市探索游戏 —— 与 AI 伙伴「阿穗」一起，打卡地标、解锁任务、收集成就，沉浸式感受羊城魅力。
 
-当前仓库是一个 monorepo（基于 pnpm 的 workspace）
+## 产品定位
 
-- Expo 代码在 client 目录，Express.js 代码在 server 目录
-- 本模板默认无 Tab Bar，可按需改造
+**赛博派蒙**（Cyber Paimon）是一款融合 AI 对话与游戏化打卡的广州旅游探索应用。用户扮演"旅行者"，在 AI 伙伴「阿穗」的陪伴下，穿越广州七大区域，打卡 33 个精选锚点，完成主线剧情与温馨支线任务，收集成就徽章，探索城市背后的故事。
 
-├── client/                     # React Native 前端代码
-│   ├── app/                    # Expo Router 路由目录（仅路由配置）
-│   │   ├── _layout.tsx         # 根布局文件（必需，务必阅读）
-│   │   └── index.tsx           # 首页
-│   ├── screens/                # 页面实现目录（与 app/ 路由对应）
-│   │   └── demo/               # 示例页面
-│   │       └── index.tsx
-│   ├── components/             # 可复用组件
-│   │   └── Screen.tsx          # 页面容器组件（必用）
-│   ├── hooks/                  # 自定义 Hooks
-│   ├── contexts/               # React Context 代码
-│   ├── utils/                  # 工具函数
-│   ├── assets/                 # 静态资源
-|   └── package.json            # Expo 应用 package.json
-├── server/                     # 服务端代码根目录 (Express.js)
-|   ├── src/
-│   │   └── index.ts            # 服务端入口文件
-|   └── package.json            # 服务端 package.json
-├── package.json
-├── .cozeproj                   # 预置脚手架脚本（禁止修改）
-└── .coze                       # 配置文件（禁止修改）
+- **核心人格**：AI 旅游搭子「阿穗」—— 话痨、热情、偶尔傲娇，模拟原神派蒙的陪伴感
+- **产品调性**：游戏化 × 沉浸感 × 温暖陪伴
+- **目标用户**：喜欢开放世界探索体验的年轻用户、广州深度游爱好者
 
-## 样式方案
+## 核心功能
 
-基于 tailwindcss 进行样式开发（底层基于 Uniwind）
+### 🗺️ 广州大世界探索
 
-写法示例：
+覆盖广州 **7 大区域**、**33 个精选锚点**（地标 / 美食 / 隐藏地点），支持 GPS 距离验证打卡。已解锁区域亮起，未解锁区域迷雾遮蔽，逐区推进探索进度。
 
-```tsx
-<View className="flex-1 bg-white dark:bg-gray-900 p-4"></View>
+### 🤖 AI 伙伴对话
+
+与「阿穗」自由聊天，她会根据你的探索进度、当前位置、时间天气等上下文给出个性化回应。同时也支持与 NPC（如"老广阿伯"）对话，触发隐藏剧情。
+
+### 📋 主线 × 支线任务系统
+
+- **7 章主线任务**：从越秀五羊石像出发，一路解锁至黄埔海丝古港
+- **10 个支线任务**：穿插温馨感人的广州故事——榕树下的阿伯、西关小姐的明信片、糖水铺的阿嬷、雨夜借伞人……
+- 打卡进度实时同步，完成任务自动解锁下一章
+
+### 🏆 成就收集
+
+**12 枚成就徽章**：从"初来乍到"到"广州通"，覆盖探索、美食、夜景、人情味、博物馆迷等多维度挑战。
+
+### 📅 回忆日历
+
+月视图日历展示打卡足迹。支持点击日期查看当天打卡照片，照片可随时替换更新。横向照片墙展示，沉浸式浏览探索回忆。
+
+### 📊 个人足迹统计
+
+探索区域数、打卡锚点数、连续打卡天数、成就收集进度——一目了然的游戏化统计面板。
+
+## 技术栈
+
+| 层 | 技术 | 说明 |
+|---|------|------|
+| **前端** | Expo SDK 54 + React 19 + React Native 0.81 | 跨平台移动应用（iOS / Android / Web） |
+| **路由** | Expo Router (file-based) | 基于文件系统的类型安全路由 |
+| **样式** | Tailwind CSS v4 + Uniwind | 原子化 CSS，支持 light/dark 双主题 |
+| **组件库** | HeroUI + 自研组件 | 跨平台 UI 组件（Dialog / Toast / Skeleton 等） |
+| **地图** | Leaflet.js (Web) / 高德 3D 地图 (Native) | 平台自适应地图渲染 |
+| **动画** | react-native-reanimated + expo-linear-gradient | 流畅动效与渐变装饰 |
+| **后端** | Express.js + TypeScript | RESTful API 服务 |
+| **数据库** | SQLite + Drizzle ORM | 轻量级嵌入式数据库，零配置 |
+| **AI** | OpenAI 兼容 API (DeepSeek) | 角色扮演对话生成 |
+| **包管理** | pnpm workspace monorepo | 单仓库管理前后端代码 |
+
+## 架构总览
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Client (Expo / React Native)           │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────┐ ┌─────────┐  │
+│  │  首页   │ │  地图   │ │  任务   │ │ 日历  │ │  我的    │  │
+│  │ AI聊天 │ │ Leaflet│ │ 主/支线│ │ 打卡  │ │ 成就/设置│  │
+│  └────────┘ └────────┘ └────────┘ └──────┘ └─────────┘  │
+│                         ↕ API                             │
+└──────────────────────────────────────────────────────────┘
+                           ↕ HTTP / REST
+┌──────────────────────────────────────────────────────────┐
+│                   Server (Express.js)                     │
+│  ┌───────────┐ ┌───────────┐ ┌──────────────────────┐   │
+│  │ auth      │ │  file     │ │  Game Engine          │   │
+│  │ Token认证  │ │  upload   │ │  afterCheckin()       │   │
+│  └───────────┘ └───────────┘ │  ├─ 主线进度更新       │   │
+│                               │  ├─ 支线进度更新       │   │
+│  ┌───────────┐ ┌───────────┐ │  ├─ 成就判定           │   │
+│  │ AI Agent  │ │  validate │ │  └─ 区域解锁           │   │
+│  │ OpenAI API│ │  Zod校验   │ └──────────────────────┘   │
+│  └───────────┘ └───────────┘                             │
+│                         ↕                                 │
+│              SQLite (Drizzle ORM)                         │
+└──────────────────────────────────────────────────────────┘
 ```
 
-```tsx
-<Text
-  className="text-lg font-bold text-gray-900 dark:text-white"
-  selectionColorClassName="accent-blue-500"
->
-  Hello World
-</Text>
-```
+## 快速开始
 
-Uniwind 官方文档：https://docs.uniwind.dev/llms.txt
+### 前置要求
 
-## 如何进行静态校验（TSC + ESLint）
+- **Node.js** >= 24
+- **pnpm** >= 9.0.0
+- （可选）DeepSeek API Key 或其他 OpenAI 兼容 API Key
+
+### 1. 克隆项目
 
 ```bash
-# 对 client 和 server 目录同时进行校验
-pnpm -w lint:all
-
-# 对 client 目录进行校验
-pnpm -w lint:client
-
-# 对 server 目录进行校验
-pnpm -w lint:server
+git clone https://github.com/your-username/cyber-paimon.git
+cd cyber-paimon/projects
 ```
 
-## 如何修改主题模式（跟随系统、固定暗色、固定亮色）
-
-默认为跟随系统，如果用户明确指定为“暗色”或“亮色”，需要修改 `client/components/ColorSchemeUpdater.tsx` 的 `DEFAULT_THEME` 变量为合适的值
-
-## 如何定制主题 design tokens
-
-当前项目的**设计系统**基于 tailwindcss 实现，核心入口文件为 `client/global.css`，如果需要定制主题，应该**阅读并修改 `client/global.css` 文件**
-
-## 路由及 Tab Bar 实现规范
-
-### 方案一：无 Tab Bar（Stack 导航）
-
-适用于线性流程应用，采用简化的目录结构：
-
-```
-client/app/
-├── _layout.tsx         # 根布局（Stack 导航配置）
-├── index.tsx           # 应用入口
-├── detail.tsx          # 详情页（通过 params 传递数据）
-└── +not-found.tsx      # 404 页面
-```
-
-**根布局配置** `client/app/_layout.tsx`：
-
-以下仅为代码片段供写法参考
-
-```tsx
-<Stack screenOptions={{ headerShown: false }}>
-  <Stack.Screen name="index" />
-  <Stack.Screen name="detail" />
-</Stack>
-```
-
-**应用入口** `client/app/index.tsx`：
-```tsx
-export { default } from "@/screens/home";
-```
-> **禁止事项**：无 Tab Bar 场景下，不得创建 `(tabs)` 目录。
-
-### 方案二：有 Tab Bar（Tabs 导航）
-
-采用路由分组实现底部导航栏：
-```
-client/app/
-├── _layout.tsx              # 根布局
-├── (tabs)/
-│   ├── _layout.tsx          # Tab 导航配置
-│   ├── index.tsx            # 默认 Tab（必须存在）
-│   ├── discover.tsx         # 发现页
-│   └── profile.tsx          # 个人中心
-├── detail.tsx               # Tab 外的独立页面（通过 params 传递数据）
-└── +not-found.tsx
-```
-> **⚠️ [CRITICAL]**： `app/index.tsx` 优先级高于 `(tabs)/index.tsx`，会导致首页无 Tab Bar。**当有(tabs)/index.tsx时必须删除 `app/index.tsx`**。
-
-**根布局配置** `client/app/_layout.tsx`：
-
-以下仅为代码片段供写法参考
-
-```tsx
-<Stack screenOptions={{ headerShown: false }}>
-  <Stack.Screen name="(tabs)" />
-  <Stack.Screen name="detail" />
-</Stack>
-```
-
-**应用入口** `client/app/(tabs)/index.tsx`：
-```tsx
-export { default } from "@/screens/home";
-```
-
-**Tab 布局配置** `client/app/(tabs)/_layout.tsx`：
-
-```tsx
-import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FontAwesome6 } from '@expo/vector-icons';
-import { useCSSVariable } from 'uniwind';
-
-export default function TabLayout() {
-  const insets = useSafeAreaInsets();
-  const [background, muted, accent, border] = useCSSVariable([
-    '--color-background',
-    '--color-muted',
-    '--color-accent',
-    '--color-border',
-  ]) as string[];
-
-  let tabBarStyle = {
-    backgroundColor: background,
-    borderTopWidth: 1,
-    borderTopColor: border,
-  };
-
-  // 用于修复 Web 上高度异常的问题（这个 if 逻辑必须添加）
-  if (Platform.OS === 'web') {
-    tabBarStyle = {
-      ...tabBarStyle,
-      height: 'auto',
-    }
-  }
-
-  return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle,
-        tabBarActiveTintColor: accent,
-        tabBarInactiveTintColor: muted,
-      }}
-    >
-      {/* name 必须与文件名完全一致 */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: '首页',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="house" size={20} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="discover"
-        options={{
-          title: '发现',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="compass" size={20} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: '我的',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="user" size={20} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
-  );
-}
-```
-
-**Tab 页面文件** `client/app/(tabs)/index.tsx`：
-```tsx
-export { default } from "@/screens/home";
-```
-
-### 注意事项
-
-在改动 `client/app/_layout.tsx` 前，必须先阅读该文件，再进行修改操作
-
-以下是需要保留的重要逻辑
-
-- 保留 global.css 引入（tailwindcss 生效的关键）
-- 保留 Provider 的使用
-
-## 依赖管理与模块导入规范
-
-### 依赖安装
-**禁止**使用 `npm` 或 `yarn`，按目录区分安装命令：
-
-| 目录 | 安装命令 | 说明 |
-|------|----------|------|
-| `client/` | `npx expo install <package>` | Expo 会自动选择与 SDK 兼容的版本 |
-| `server/` | `pnpm add <package>` | 使用 pnpm 管理后端依赖 |
+### 2. 安装依赖
 
 ```bash
-# client 目录（Expo 项目）
-cd client && npx expo install expo-camera expo-image-picker
-
-# server 目录（Express 项目）
-cd server && pnpm add axios cors
+pnpm install
 ```
 
-**网络问题处理**：`npx expo install` 可能因网络原因失败，失败时重试 2 次，仍失败则改用 `pnpm add` 安装
+### 3. 配置环境变量
 
-## Expo 开发规范
+**服务端**（`server/.env`）：
 
-### 路径别名
-
-Expo 配置了 `@/` 路径别名指向 `client/` 目录：
-
-```tsx
-// 正确
-import { Screen } from '@/components/Screen';
-
-// 避免相对路径
-import { Screen } from '../../../components/Screen';
+```env
+LLM_API_KEY=your_api_key_here
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-chat
 ```
 
-## 本地开发
+**客户端**（`client/.env`）：
 
-`coze dev`：用来首次启动前后端服务，也可以用来重启前后端服务（该命令会先尝试杀掉占用端口的进程，再启动服务）
+```env
+EXPO_PUBLIC_BACKEND_BASE_URL=http://localhost:9091
+EXPO_PUBLIC_APP_NAME=广州探索
+EXPO_PUBLIC_AMAP_API_KEY=your_amap_key    # 仅 Native 端需要
+```
+
+### 4. 初始化数据库
+
+```bash
+cd server
+npx drizzle-kit push    # 创建表结构
+npx tsx src/index.ts    # 启动服务器（自动写入种子数据）
+```
+
+### 5. 启动开发服务器
+
+```bash
+# 在项目根目录，同时启动前后端
+pnpm dev
+```
+
+启动后：
+- 前端 Web 预览：`http://localhost:8081`
+- 后端 API：`http://localhost:9091`
+
+测试账号：手机号 `1`，昵称任意。
+
+## 游戏机制
+
+### 打卡
+
+在锚点附近 50 米范围内（可配置）拍照打卡。系统使用 **Haversine 公式** 计算 GPS 距离。打卡成功后，业务引擎自动执行以下逻辑：
+
+### 任务推进
+
+- **主线任务**：以累计打卡总数为进度指标。完成一章自动解锁下一章，并解锁对应新区域
+- **支线任务**：需要打卡任务关联的特定锚点。例如「榕树下的阿伯」需要打卡五羊石像、镇海楼、光孝寺
+
+### 区域解锁
+| 打卡数 | 解锁区域 |
+|--------|----------|
+| 初始 | 越秀、荔湾 |
+| ≥5 | 海珠 |
+| ≥8 | 天河 |
+| ≥12 | 番禺、白云 |
+| ≥18 | 黄埔 |
+
+### 成就触发
+
+成就实时检测，条件满足即解锁。包括累计打卡数、特定区域探索、美食打卡数、博物馆打卡组合、隐藏锚点发现、支线完成数、连续打卡天数等。
+
+## API 接口一览
+
+所有接口路径前缀：`/api/v1`
+
+### 认证
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/auth/login` | 手机号注册/登录，返回 Bearer Token |
+| POST | `/auth/logout` | 登出，销毁 Token |
+
+### 用户
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/user/me` | 获取当前用户信息 |
+| PUT | `/user/me` | 更新昵称/头像 |
+
+### 区域 & 锚点
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/regions` | 区域列表（含解锁状态） |
+| GET | `/anchors` | 全部锚点（含用户打卡/解锁状态） |
+| GET | `/anchors/:regionId` | 按区域筛选锚点 |
+
+### 打卡
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/checkins` | 用户打卡记录列表 |
+| GET | `/checkins/:date` | 按日期查询打卡 |
+| POST | `/checkins` | 创建打卡（multipart: image + anchor_id + GPS） |
+| PUT | `/checkins/:id` | 替换打卡照片 |
+
+### 任务
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/quests/main` | 主线任务（含用户进度） |
+| GET | `/quests/side` | 支线任务（含用户进度） |
+
+### AI 对话
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/chat/history` | 聊天历史（最近 40 条） |
+| POST | `/chat` | 与 AI 伙伴「阿穗」对话 |
+| POST | `/chat/npc` | 与 NPC 对话 |
+
+### 其他
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/stats` | 用户综合统计数据 |
+| GET | `/achievements` | 全部成就列表 |
+| POST | `/upload` | 上传图片 |
+
+## 项目结构
+
+```
+├── client/                         # Expo React Native 前端
+│   ├── app/                        # Expo Router 文件路由
+│   │   ├── (tabs)/                 # 5 个 Tab 页面
+│   │   │   ├── _layout.tsx         # Tab Bar 配置
+│   │   │   ├── index.tsx           # 首页
+│   │   │   ├── map.tsx             # 地图页
+│   │   │   ├── tasks.tsx           # 任务页
+│   │   │   ├── calendar.tsx        # 日历页
+│   │   │   └── profile.tsx         # 个人页
+│   │   ├── _layout.tsx             # 根布局 (Provider + Stack)
+│   │   └── +not-found.tsx
+│   ├── screens/                    # 页面实现
+│   │   ├── home/index.tsx          # AI 聊天 + 打卡
+│   │   ├── map/index.tsx           # 区域浏览 + 锚点 + 打卡
+│   │   ├── tasks/index.tsx         # 主/支线任务追踪
+│   │   ├── calendar/index.tsx      # 月历 + 打卡历史
+│   │   └── profile/index.tsx       # 统计 + 成就 + 设置
+│   ├── components/                 # 通用组件
+│   │   ├── Screen.tsx              # 页面容器（安全区/键盘处理）
+│   │   ├── Provider.tsx            # 全局 Provider 挂载
+│   │   ├── LeafletMap.tsx          # 跨平台地图组件
+│   │   └── SmartDateInput.tsx      # 日期选择器
+│   ├── services/api.ts             # 全部 API 调用
+│   ├── hooks/                      # useAppTheme / useSafeRouter
+│   ├── contexts/AuthContext.tsx     # 认证状态管理
+│   ├── theme/colors.ts             # light/dark 色板
+│   ├── heroui/                     # HeroUI 组件库
+│   ├── global.css                  # Tailwind 入口 + design tokens
+│   └── app.config.ts               # Expo 配置
+│
+├── server/                         # Express.js 后端
+│   └── src/
+│       ├── index.ts                # 主入口 + 全部路由
+│       ├── config.ts               # 配置（端口、LLM 参数）
+│       ├── db/
+│       │   ├── index.ts            # 数据库连接
+│       │   ├── schema.ts           # Drizzle ORM 表定义（12 张表）
+│       │   └── seed.ts             # 种子数据
+│       ├── middleware/
+│       │   ├── auth.ts             # Token 认证
+│       │   └── validate.ts         # Zod 参数校验
+│       ├── services/
+│       │   ├── agent.ts            # AI 对话服务
+│       │   └── engine.ts           # 游戏业务引擎
+│       └── prompts/                # AI 角色人设
+│
+├── DESIGN.md                       # 设计规范文档
+└── package.json                    # monorepo 根配置
+```
+
+## 设计系统
+
+### 色彩
+| Token | 色值 | 用途 |
+|-------|------|------|
+| Primary | `#2D7D46` | 主色调（森林绿，探索自然） |
+| Secondary | `#D4A574` | 沙金色（阳光、广州地标） |
+| Accent | `#E85D4C` | 朱红（活力、打卡成就感） |
+| Background | `#FDF8F2` | 暖白背景 |
+| Surface | `#FFFFFF` | 卡片/面板背景 |
+
+深色模式采用 GitHub Dark 风格暗色调（`#0D1117` ~ `#161B22`），25 个语义化色板 Token 覆盖全部场景。
+
+### 七大区域色彩
+越秀 `#8B4513` · 荔湾 `#DAA520` · 海珠 `#4682B4` · 天河 `#9370DB` · 番禺 `#228B22` · 白云 `#87CEEB` · 黄埔 `#CD853F`
+
+## 许可证
+
+MIT License
