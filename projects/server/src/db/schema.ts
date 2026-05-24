@@ -111,12 +111,21 @@ export const achievements = sqliteTable("achievements", {
   color: text("color").notNull().default("#FFD700"),
 });
 
+// ── 用户成就 ──
+export const userAchievements = sqliteTable("user_achievements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  user_id: text("user_id").notNull().references(() => users.id),
+  achievement_id: text("achievement_id").notNull().references(() => achievements.id),
+  unlocked_at: text("unlocked_at").notNull(),
+});
+
 // ── 聊天历史 ──
 export const chatHistory = sqliteTable("chat_history", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   user_id: text("user_id").notNull().references(() => users.id),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
+  npc_id: text("npc_id"), // null = 阿穗对话，非 null = NPC 对话
   created_at: text("created_at").notNull(),
 });
 

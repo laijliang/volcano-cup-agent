@@ -2,7 +2,7 @@ import { db, schema } from "./index";
 import { eq } from "drizzle-orm";
 
 export async function seed() {
-  const { users, regions, anchors, userAnchors, checkins, mainQuests, sideQuests, achievements, userMainQuestProgress, userSideQuestProgress } = schema;
+  const { users, regions, anchors, userAnchors, checkins, mainQuests, sideQuests, achievements, userMainQuestProgress, userSideQuestProgress, userAchievements, userRegionProgress } = schema;
 
   // 已有数据则跳过
   const existing = db.select().from(users).where(eq(users.id, "1")).get();
@@ -14,7 +14,7 @@ export async function seed() {
   // ── 用户 ──
   db.insert(users).values({
     id: "1", name: "羊城探索者",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100",
+    avatar: "",
     level: 5, exp: 1250, created_at: "2026-05-01",
   }).run();
 
@@ -85,6 +85,12 @@ export async function seed() {
   }
   db.insert(userAnchors).values(initUA).run();
 
+  // ── 用户区域解锁进度（种子用户） ──
+  db.insert(userRegionProgress).values([
+    { user_id: "1", region_id: "yuexiu", unlocked_at: "2026-05-01" },
+    { user_id: "1", region_id: "liwan", unlocked_at: "2026-05-01" },
+  ]).run();
+
   // ── 打卡记录 ──
   db.insert(checkins).values([
     { id: "1", anchor_id: "1", user_id: "1", image_url: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200", created_at: "2026-05-20", location: "越秀区" },
@@ -132,10 +138,10 @@ export async function seed() {
 
   // ── 成就 ──
   db.insert(achievements).values([
-    { id: "1", name: "初来乍到", icon: "star", unlocked: true, color: "#FFD700" },
-    { id: "2", name: "五羊探索者", icon: "map", unlocked: true, color: "#8B4513" },
-    { id: "3", name: "美食猎人", icon: "utensils", unlocked: true, color: "#E85D4C" },
-    { id: "4", name: "连续7天", icon: "fire", unlocked: true, color: "#FF6B35" },
+    { id: "1", name: "初来乍到", icon: "star", unlocked: false, color: "#FFD700" },
+    { id: "2", name: "五羊探索者", icon: "map", unlocked: false, color: "#8B4513" },
+    { id: "3", name: "美食猎人", icon: "utensils", unlocked: false, color: "#E85D4C" },
+    { id: "4", name: "连续7天", icon: "fire", unlocked: false, color: "#FF6B35" },
     { id: "5", name: "西关漫步", icon: "walking", unlocked: false, color: "#DAA520" },
     { id: "6", name: "博物馆迷", icon: "landmark", unlocked: false, color: "#2D7D46" },
     { id: "7", name: "夜景达人", icon: "moon", unlocked: false, color: "#4682B4" },
@@ -144,6 +150,14 @@ export async function seed() {
     { id: "10", name: "珠江夜话", icon: "cloud-moon", unlocked: false, color: "#4682B4" },
     { id: "11", name: "人情味", icon: "heart", unlocked: false, color: "#E85D4C" },
     { id: "12", name: "广州通", icon: "crown", unlocked: false, color: "#FFD700" },
+  ]).run();
+
+  // ── 用户成就（种子用户） ──
+  db.insert(userAchievements).values([
+    { user_id: "1", achievement_id: "1", unlocked_at: "2026-05-01" },
+    { user_id: "1", achievement_id: "2", unlocked_at: "2026-05-01" },
+    { user_id: "1", achievement_id: "3", unlocked_at: "2026-05-01" },
+    { user_id: "1", achievement_id: "4", unlocked_at: "2026-05-01" },
   ]).run();
 
   console.log("[DB] Seed complete — all initial data loaded.");

@@ -4,12 +4,12 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNull } from "drizzle-orm";
 import { config } from "./config";
 import { db, schema } from "./db";
 import { seed } from "./db/seed";
 import { chatWithAsui, chatWithNpc, type ChatMessage } from "./services/agent";
-import { optionalAuth } from "./middleware/auth";
+import { requireAuth } from "./middleware/auth";
 import { validate, loginSchema, updateUserSchema, chatSchema, npcChatSchema } from "./middleware/validate";
 import { afterCheckin, getConsecutiveDays } from "./services/engine";
 
@@ -89,8 +89,8 @@ app.post("/api/v1/auth/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-// 所有业务路由使用可选认证（向后兼容）
-app.use("/api/v1/", optionalAuth);
+// 所有业务路由必须认证
+app.use("/api/v1/", requireAuth);
 
 // ==================== 用户 ====================
 
@@ -112,9 +112,17 @@ app.put("/api/v1/user/me", validate(updateUserSchema), (req, res) => {
 
 // ==================== 区域 ====================
 
-app.get("/api/v1/regions", (_req, res) => {
+app.get("/api/v1/regions", (req, res) => {
+  const userId = req.userId!;
   const regions = db.select().from(schema.regions).all();
-  res.json(regions);
+  const userRegions = db.select().from(schema.userRegionProgress)
+    .where(eq(schema.userRegionProgress.user_id, userId)).all();
+  const unlockedSet = new Set(userRegions.map(ur => ur.region_id));
+  // 越秀、荔湾默认解锁
+  res.json(regions.map(r => ({
+    ...r,
+    unlocked: r.id === "yuexiu" || r.id === "liwan" || unlockedSet.has(r.id),
+  })));
 });
 
 // ==================== 锚点 ====================
@@ -225,13 +233,17 @@ app.post("/api/v1/checkins", upload.single("image"), (req, res) => {
   }
 
   // 触发业务引擎：任务进度、成就、区域解锁
+  let newAchievements: { id: string; name: string; icon: string; color: string }[] = [];
+  let newRegions: string[] = [];
   try {
-    afterCheckin(req.userId!, anchor_id);
+    const result = afterCheckin(req.userId!, anchor_id);
+    newAchievements = result.newAchievements;
+    newRegions = result.newRegions;
   } catch (e) {
     console.error("Engine error:", e);
   }
 
-  res.status(201).json(newCheckin);
+  res.status(201).json({ ...newCheckin, new_achievements: newAchievements, new_regions: newRegions });
 });
 
 // 替换打卡照片
@@ -297,9 +309,12 @@ app.get("/api/v1/quests/side", (req, res) => {
 
 // ==================== 成就 ====================
 
-app.get("/api/v1/achievements", (_req, res) => {
+app.get("/api/v1/achievements", (req, res) => {
   const all = db.select().from(schema.achievements).all();
-  res.json(all);
+  const userAchs = db.select().from(schema.userAchievements)
+    .where(eq(schema.userAchievements.user_id, req.userId!)).all();
+  const unlockedSet = new Set(userAchs.map(ua => ua.achievement_id));
+  res.json(all.map(a => ({ ...a, unlocked: unlockedSet.has(a.id) })));
 });
 
 // ==================== AI 对话 ====================
@@ -307,7 +322,10 @@ app.get("/api/v1/achievements", (_req, res) => {
 app.get("/api/v1/chat/history", (req, res) => {
   const userId = req.userId!;
   const history = db.select().from(schema.chatHistory)
-    .where(eq(schema.chatHistory.user_id, userId))
+    .where(and(
+      eq(schema.chatHistory.user_id, userId),
+      isNull(schema.chatHistory.npc_id),
+    ))
     .orderBy(desc(schema.chatHistory.created_at))
     .limit(40).all();
   res.json(history.reverse().map(h => ({
@@ -388,6 +406,9 @@ app.post("/api/v1/chat/npc", validate(npcChatSchema), async (req, res) => {
       return res.status(400).json({ error: "消息不能为空" });
     }
 
+    const userId = req.userId!;
+    const actualNpcId = npcId || config.npc.oldGuangzhou;
+
     const userContext = {
       userName: context?.userName || "旅行者",
       currentRegion: context?.currentRegion || "",
@@ -398,12 +419,17 @@ app.post("/api/v1/chat/npc", validate(npcChatSchema), async (req, res) => {
       timeOfDay: getTimeOfDay(),
     };
 
-    const reply = await chatWithNpc(npcId || config.npc.oldGuangzhou, message, userContext);
+    const reply = await chatWithNpc(actualNpcId, message, userContext);
+    const now = new Date().toISOString();
+
+    // 持久化 NPC 对话
+    db.insert(schema.chatHistory).values({ user_id: userId, role: "user", content: message, npc_id: actualNpcId, created_at: now }).run();
+    db.insert(schema.chatHistory).values({ user_id: userId, role: "assistant", content: reply, npc_id: actualNpcId, created_at: now }).run();
 
     res.json({
       reply,
-      agent: npcId || "老广阿伯",
-      timestamp: new Date().toISOString(),
+      agent: actualNpcId,
+      timestamp: now,
     });
   } catch (error) {
     console.error("NPC chat error:", error);
@@ -425,7 +451,12 @@ app.get("/api/v1/stats", (req, res) => {
   const checkins = db.select().from(schema.checkins)
     .where(eq(schema.checkins.user_id, userId)).all();
   const achievements = db.select().from(schema.achievements).all();
+  const userAchs = db.select().from(schema.userAchievements)
+    .where(eq(schema.userAchievements.user_id, userId)).all();
   const user = db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+
+  const userRegions = db.select().from(schema.userRegionProgress)
+    .where(eq(schema.userRegionProgress.user_id, userId)).all();
 
   const mainQuestProgress = db.select().from(schema.userMainQuestProgress)
     .where(eq(schema.userMainQuestProgress.user_id, userId)).all();
@@ -434,12 +465,12 @@ app.get("/api/v1/stats", (req, res) => {
 
   res.json({
     total_regions: allRegions.length,
-    unlocked_regions: allRegions.filter(r => r.unlocked).length,
+    unlocked_regions: new Set([...userRegions.map(r => r.region_id), "yuexiu", "liwan"]).size,
     total_anchors: allAnchors.length,
     checked_anchors: checkedAnchors.length,
     total_checkins: checkins.length,
     total_achievements: achievements.length,
-    unlocked_achievements: achievements.filter(a => a.unlocked).length,
+    unlocked_achievements: userAchs.length,
     total_main_quests: mainQuestProgress.length,
     completed_main_quests: mainQuestProgress.filter(q => q.status === "completed").length,
     active_main_quests: mainQuestProgress.filter(q => q.status === "active").length,

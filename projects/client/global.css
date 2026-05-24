@@ -492,3 +492,12 @@ html, body {
   background: linear-gradient(180deg, rgba(45, 125, 70, 0.12) 0%, rgba(45, 125, 70, 0.04) 30%, transparent 60%);
 }
 
+/* 去掉 TextInput 聚焦时的浏览器默认边框/轮廓 */
+input:focus,
+textarea:focus,
+[class*="css-textinput"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+

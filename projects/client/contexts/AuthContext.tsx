@@ -1,28 +1,40 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { setAuthToken } from "@/services/api";
 
-// ── 跨平台 token 存储 ──
+// ── 跨平台 token 存储（Native: SecureStore 持久化 + 内存兜底, Web: localStorage） ──
+
+const TOKEN_KEY = "auth_token";
 
 const storage = {
-  getToken(): string | null {
+  async getToken(): Promise<string | null> {
     if (Platform.OS === "web") {
-      return localStorage.getItem("auth_token");
+      return localStorage.getItem(TOKEN_KEY);
     }
-    // native 端用内存变量（后续可替换为 expo-secure-store）
-    return (globalThis as any).__auth_token || null;
-  },
-  setToken(token: string) {
-    if (Platform.OS === "web") {
-      localStorage.setItem("auth_token", token);
-    } else {
-      (globalThis as any).__auth_token = token;
+    try {
+      return await SecureStore.getItemAsync(TOKEN_KEY);
+    } catch {
+      return null;
     }
   },
-  removeToken() {
-    if (Platform.OS === "web") {
-      localStorage.removeItem("auth_token");
-    } else {
-      delete (globalThis as any).__auth_token;
+  async setToken(token: string) {
+    // 内存兜底：API 层同步读取
+    setAuthToken(token);
+    if (Platform.OS !== "web") {
+      try {
+        await SecureStore.setItemAsync(TOKEN_KEY, token);
+      } catch {
+        // SecureStore 失败时仅依赖内存（API 层可工作，重启后需重新登录）
+      }
+    }
+  },
+  async removeToken() {
+    setAuthToken(null);
+    if (Platform.OS !== "web") {
+      try {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+      } catch {}
     }
   },
 };
@@ -58,23 +70,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // 初始化：检查是否有已存储的 token
   useEffect(() => {
-    const savedToken = storage.getToken();
-    if (savedToken) {
-      setToken(savedToken);
-      // 用 token 获取用户信息
-      fetch(`${API_BASE}/api/v1/user/me`, {
-        headers: { Authorization: `Bearer ${savedToken}` },
-      })
-        .then((r) => r.json())
-        .then((u) => {
-          if (u.id) setUser(u);
-          else storage.removeToken();
-        })
-        .catch(() => {})
-        .finally(() => setIsLoading(false));
-    } else {
+    (async () => {
+      const savedToken = await storage.getToken();
+      if (savedToken) {
+        setToken(savedToken);
+        try {
+          const res = await fetch(`${API_BASE}/api/v1/user/me`, {
+            headers: { Authorization: `Bearer ${savedToken}` },
+          });
+          const u = await res.json();
+          if (u.id) {
+            setUser(u);
+          } else {
+            await storage.removeToken();
+          }
+        } catch {
+          // token 可能已失效，静默处理
+        }
+      }
       setIsLoading(false);
-    }
+    })();
   }, []);
 
   const login = useCallback(async (phone: string, name?: string) => {
@@ -85,7 +100,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
     if (!res.ok) throw new Error("登录失败");
     const data = await res.json();
-    storage.setToken(data.token);
+    await storage.setToken(data.token);
     setToken(data.token);
     setUser(data.user);
   }, []);
@@ -97,7 +112,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
-    storage.removeToken();
+    await storage.removeToken();
     setToken(null);
     setUser(null);
   }, [token]);

@@ -20,6 +20,7 @@ import * as Location from 'expo-location';
 import { sendChatMessage, createCheckin, getStats, getAnchors, getMainQuests, getChatHistory, type ChatMessage } from '@/services/api';
 import { Spinner, Dialog, Skeleton, useToast } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
+import CelebrationOverlay from '@/components/CelebrationOverlay';
 
 // 初始对话数据
 const initialMessages: ChatMessage[] = [
@@ -66,6 +67,9 @@ export default function HomeScreen() {
   const [messages, setMessages] = useState(initialMessages);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [activeQuest, setActiveQuest] = useState<{ id: string; title: string; subtitle: string; progress: number; total: number; reward: string } | null>(null);
 
@@ -73,6 +77,12 @@ export default function HomeScreen() {
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [celebration, setCelebration] = useState<{
+    visible: boolean;
+    title: string;
+    subtitle: string;
+    achievements?: { id: string; name: string; icon: string; color: string }[];
+  }>({ visible: false, title: '', subtitle: '' });
 
   useEffect(() => {
     loadStats();
@@ -248,10 +258,15 @@ export default function HomeScreen() {
         return;
       }
 
-      await createCheckin(nearest.id, selectedImage, nearest.name, coords);
-      toast.show({ label: '打卡成功！', description: `已在「${nearest.name}」完成打卡`, variant: 'success' });
+      const result = await createCheckin(nearest.id, selectedImage, nearest.name, coords);
       setCheckinModalVisible(false);
       setSelectedImage(null);
+      setCelebration({
+        visible: true,
+        title: '打卡成功！',
+        subtitle: `已在「${nearest.name}」完成打卡`,
+        achievements: result?.new_achievements?.length > 0 ? result.new_achievements : undefined,
+      });
       loadStats();
       loadActiveQuest();
     } catch (error: any) {
@@ -271,9 +286,56 @@ export default function HomeScreen() {
         handleSelectFromGallery();
         break;
       case 'voice':
-        toast.show({ label: '语音功能', description: '语音功能即将上线，敬请期待～' });
+        handleVoiceInput();
         break;
     }
+  };
+
+  // Web 端语音识别
+  const handleVoiceInput = () => {
+    if (Platform.OS !== 'web') {
+      toast.show({ label: '语音功能', description: '移动端即将支持语音输入～' });
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.show({ label: '语音功能', description: '当前浏览器不支持语音识别，请使用 Chrome 浏览器' });
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognitionRef.current = recognition;
+
+    recognition.onresult = (event: any) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setInputText(transcript);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+      toast.show({ label: '语音识别', description: '未能识别语音，请重试' });
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.start();
+    setIsListening(true);
+    toast.show({ label: '语音识别', description: '正在聆听...请说话' });
   };
 
   const actionColorMap: Record<string, string> = { primary: t.primary, danger: t.danger, gold: t.gold };
@@ -624,6 +686,7 @@ export default function HomeScreen() {
     fontSize: 16,
     color: t.text,
     paddingVertical: 0,
+    outline: 'none',
   },
   sendButtonGradient: {
     width: 42,
@@ -855,29 +918,33 @@ export default function HomeScreen() {
 
         {/* 快捷操作栏 */}
         <View style={styles.quickActions}>
-          {quickActions.map((action) => (
+          {quickActions.map((action) => {
+            const isVoiceActive = action.id === 'voice' && isListening;
+            return (
             <TouchableOpacity
               key={action.id}
               style={styles.quickActionBtn}
               onPress={() => handleQuickAction(action.id)}
             >
-              <View style={[styles.quickActionIcon, { backgroundColor: actionColorMap[action.colorKey] + '25' }]}>
-                <FontAwesome6 name={action.icon as any} size={18} color={actionColorMap[action.colorKey]} />
+              <View style={[styles.quickActionIcon, { backgroundColor: isVoiceActive ? t.danger + '35' : actionColorMap[action.colorKey] + '25' }]}>
+                <FontAwesome6 name={isVoiceActive ? 'microphone' as any : action.icon as any} size={18} color={isVoiceActive ? t.danger : actionColorMap[action.colorKey]} />
               </View>
-              <Text style={styles.quickActionLabel}>{action.label}</Text>
+              <Text style={[styles.quickActionLabel, isVoiceActive && { color: t.danger }]}>{isVoiceActive ? '聆听中' : action.label}</Text>
             </TouchableOpacity>
-          ))}
+          )})}
         </View>
 
         {/* 输入区域 */}
         <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 10 }]}>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, (isInputFocused || inputText) && { borderColor: '#3FB950', shadowColor: '#3FB950', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 12 }]}>
             <TextInput
               style={styles.input}
               placeholder="和阿穗聊聊天..."
               placeholderTextColor={t.textTertiary}
               value={inputText}
               onChangeText={setInputText}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
               onSubmitEditing={handleSendMessage}
               returnKeyType="send"
               editable={!isLoading}
@@ -947,6 +1014,15 @@ export default function HomeScreen() {
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog>
+
+        {/* 打卡庆祝动效 */}
+        <CelebrationOverlay
+          visible={celebration.visible}
+          title={celebration.title}
+          subtitle={celebration.subtitle}
+          achievements={celebration.achievements}
+          onComplete={() => setCelebration({ visible: false, title: '', subtitle: '' })}
+        />
       </KeyboardAvoidingView>
     </Screen>
   );

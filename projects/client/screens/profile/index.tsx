@@ -20,6 +20,8 @@ import { getUserProfile, getAchievements, getStats, updateUserProfile, uploadIma
 import { useUniwind, Uniwind } from 'uniwind';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { Spinner, Avatar, Separator, Skeleton, useToast, Dialog } from '@/heroui';
+import DEFAULT_AVATAR from '@/constants/assets';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Achievement {
   id: string;
@@ -44,6 +46,7 @@ export default function ProfileScreen() {
   const { theme } = useUniwind();
   const { toast } = useToast();
   const t = useAppTheme();
+  const { logout } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
 
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -481,6 +484,21 @@ export default function ProfileScreen() {
     fontSize: 12,
     color: t.textTertiary,
   },
+  logoutBtn: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E85D4C',
+    backgroundColor: '#E85D4C10',
+  },
+  logoutText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#E85D4C',
+  },
 }), [t, windowWidth]);
 
   if (isLoading) {
@@ -559,7 +577,7 @@ export default function ProfileScreen() {
             <View style={styles.avatarContainer}>
               <Avatar size="lg" alt={`${user?.name || 'User'}'s avatar`} className="w-[72px] h-[72px] rounded-full shadow-primary" style={{ borderWidth: 3, borderColor: t.primary }}>
                 <Avatar.Image
-                  source={{ uri: user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' }}
+                  source={user?.avatar ? { uri: user.avatar } : DEFAULT_AVATAR}
                 />
                 <Avatar.Fallback />
               </Avatar>
@@ -703,6 +721,18 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* 退出登录 */}
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={async () => {
+            await logout();
+            router.navigate('/login');
+          }}
+          activeOpacity={0.6}
+        >
+          <Text style={styles.logoutText}>退出登录</Text>
+        </TouchableOpacity>
+
         {/* 版本信息 */}
         <View style={styles.versionInfo}>
           <Text style={styles.versionText}>赛博派蒙·旅游搭子 v1.0.0</Text>
@@ -721,7 +751,7 @@ export default function ProfileScreen() {
             <View style={{ alignItems: 'center', marginTop: 16, marginBottom: 20 }}>
               <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.7}>
                 <Image
-                  source={{ uri: editAvatar || user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' }}
+                  source={editAvatar || user?.avatar ? { uri: (editAvatar || user?.avatar) as string } : DEFAULT_AVATAR}
                   style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: t.primary }}
                 />
                 <View style={{

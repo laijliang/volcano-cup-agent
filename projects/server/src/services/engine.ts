@@ -1,14 +1,22 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db, schema } from "../db";
 
-const { anchors, userAnchors, mainQuests, sideQuests, achievements, checkins, users, userMainQuestProgress, userSideQuestProgress } = schema;
+const { anchors, userAnchors, mainQuests, sideQuests, achievements, checkins, users, userMainQuestProgress, userSideQuestProgress, userAchievements, userRegionProgress } = schema;
 
-// 打卡后触发所有业务逻辑
+interface NewAchievement {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+}
+
+// 打卡后触发所有业务逻辑，返回新解锁的成就和区域
 export function afterCheckin(userId: string, anchorId: string) {
   updateMainQuestProgress(userId, anchorId);
   updateSideQuestProgress(userId, anchorId);
-  checkAchievements(userId);
-  checkRegionUnlock(userId);
+  const newAchievements = checkAchievements(userId);
+  const newRegions = checkRegionUnlock(userId);
+  return { newAchievements, newRegions };
 }
 
 // ── 主线任务进度更新（按用户） ──
@@ -125,7 +133,7 @@ function updateSideQuestProgress(userId: string, anchorId: string) {
 }
 
 // ── 成就判定 ──
-function checkAchievements(userId: string) {
+function checkAchievements(userId: string): NewAchievement[] {
   const checkedUA = db.select().from(userAnchors)
     .where(and(eq(userAnchors.user_id, userId), eq(userAnchors.checked, true)))
     .all();
@@ -134,29 +142,31 @@ function checkAchievements(userId: string) {
   const allAnchors = db.select().from(anchors).all();
   const consecutiveDays = getConsecutiveDays(userId);
 
+  const newlyUnlockedIds: string[] = [];
+
   // 探索类成就
-  if (checkedCount >= 1) unlockAchievement("1"); // 初来乍到
-  if (checkedCount >= 5) unlockAchievement("2"); // 五羊探索者
-  if (consecutiveDays >= 7) unlockAchievement("4"); // 连续7天
+  if (checkedCount >= 1 && unlockAchievement(userId, "1")) newlyUnlockedIds.push("1"); // 初来乍到
+  if (checkedCount >= 5 && unlockAchievement(userId, "2")) newlyUnlockedIds.push("2"); // 五羊探索者
+  if (consecutiveDays >= 7 && unlockAchievement(userId, "4")) newlyUnlockedIds.push("4"); // 连续7天
 
   // 美食类成就：打卡3个以上food类型锚点
   const foodAnchors = allAnchors.filter(a => checkedAnchorIds.includes(a.id) && a.type === "food");
-  if (foodAnchors.length >= 3) unlockAchievement("3"); // 美食猎人
+  if (foodAnchors.length >= 3 && unlockAchievement(userId, "3")) newlyUnlockedIds.push("3"); // 美食猎人
 
   // 荔湾探索：荔湾区打卡3个以上
   const liwanAnchors = allAnchors.filter(a => checkedAnchorIds.includes(a.id) && a.region_id === "liwan");
-  if (liwanAnchors.length >= 3) unlockAchievement("5"); // 西关漫步
+  if (liwanAnchors.length >= 3 && unlockAchievement(userId, "5")) newlyUnlockedIds.push("5"); // 西关漫步
 
   // 博物馆迷：打卡南越王博物院 + 广东省博物馆
   const museumIds = ["9", "22"];
-  if (museumIds.every(id => checkedAnchorIds.includes(id))) unlockAchievement("6");
+  if (museumIds.every(id => checkedAnchorIds.includes(id)) && unlockAchievement(userId, "6")) newlyUnlockedIds.push("6");
 
   // 夜景达人：打卡广州塔
-  if (checkedAnchorIds.includes("17")) unlockAchievement("7");
+  if (checkedAnchorIds.includes("17") && unlockAchievement(userId, "7")) newlyUnlockedIds.push("7");
 
   // 隐藏成就：打卡沙面岛（secret类型锚点）
   const secretAnchors = allAnchors.filter(a => checkedAnchorIds.includes(a.id) && a.type === "secret");
-  if (secretAnchors.length >= 1) unlockAchievement("8");
+  if (secretAnchors.length >= 1 && unlockAchievement(userId, "8")) newlyUnlockedIds.push("8");
 
   // 羊城百事通：完成5个以上支线任务
   const completedSide = db.select().from(userSideQuestProgress)
@@ -164,16 +174,16 @@ function checkAchievements(userId: string) {
       eq(userSideQuestProgress.user_id, userId),
       eq(userSideQuestProgress.status, "completed"),
     )).all();
-  if (completedSide.length >= 5) unlockAchievement("9");
+  if (completedSide.length >= 5 && unlockAchievement(userId, "9")) newlyUnlockedIds.push("9");
 
   // 珠江夜话：打卡天河区3个核心地标（广州塔 + 花城广场 + 海心沙）
   const riversideIds = ["17", "21", "23"];
-  if (riversideIds.every(id => checkedAnchorIds.includes(id))) unlockAchievement("10");
+  if (riversideIds.every(id => checkedAnchorIds.includes(id)) && unlockAchievement(userId, "10")) newlyUnlockedIds.push("10");
 
   // 人情味：完成3个温馨剧情支线（s5-s10中任意3个）
   const heartwarmingIds = ["s5", "s6", "s7", "s8", "s9", "s10"];
   const completedHeartwarming = completedSide.filter(q => heartwarmingIds.includes(q.quest_id));
-  if (completedHeartwarming.length >= 3) unlockAchievement("11");
+  if (completedHeartwarming.length >= 3 && unlockAchievement(userId, "11")) newlyUnlockedIds.push("11");
 
   // 广州通：完成全部7个主线任务
   const completedMain = db.select().from(userMainQuestProgress)
@@ -181,57 +191,92 @@ function checkAchievements(userId: string) {
       eq(userMainQuestProgress.user_id, userId),
       eq(userMainQuestProgress.status, "completed"),
     )).all();
-  if (completedMain.length >= 7) unlockAchievement("12");
+  if (completedMain.length >= 7 && unlockAchievement(userId, "12")) newlyUnlockedIds.push("12");
+
+  if (newlyUnlockedIds.length === 0) return [];
+
+  const allAchs = db.select().from(achievements).all();
+  const achMap = new Map(allAchs.map(a => [a.id, a]));
+  return newlyUnlockedIds.map(id => {
+    const ach = achMap.get(id)!;
+    return { id: ach.id, name: ach.name, icon: ach.icon, color: ach.color };
+  });
 }
 
-function unlockAchievement(achId: string) {
-  const ach = db.select().from(achievements).where(eq(achievements.id, achId)).get();
-  if (ach && !ach.unlocked) {
-    db.update(achievements).set({ unlocked: true })
-      .where(eq(achievements.id, achId)).run();
+function unlockAchievement(userId: string, achId: string): boolean {
+  const existing = db.select().from(userAchievements)
+    .where(and(
+      eq(userAchievements.user_id, userId),
+      eq(userAchievements.achievement_id, achId),
+    )).get();
+  if (!existing) {
+    db.insert(userAchievements).values({
+      user_id: userId,
+      achievement_id: achId,
+      unlocked_at: new Date().toISOString(),
+    }).run();
+    return true;
   }
+  return false;
 }
 
 // ── 区域自动解锁 ──
-function checkRegionUnlock(userId: string) {
+function checkRegionUnlock(userId: string): string[] {
   const checkedCount = db.select().from(userAnchors)
     .where(and(eq(userAnchors.user_id, userId), eq(userAnchors.checked, true)))
     .all().length;
 
+  const newlyUnlocked: string[] = [];
+
   // 打卡5个锚点 → 解锁海珠
-  if (checkedCount >= 5) unlockRegion(userId, "haizhu");
+  if (checkedCount >= 5 && unlockRegion(userId, "haizhu")) newlyUnlocked.push("haizhu");
   // 打卡8个锚点 → 解锁天河
-  if (checkedCount >= 8) unlockRegion(userId, "tianhe");
+  if (checkedCount >= 8 && unlockRegion(userId, "tianhe")) newlyUnlocked.push("tianhe");
   // 打卡12个锚点 → 解锁番禺 + 白云
   if (checkedCount >= 12) {
-    unlockRegion(userId, "panyu");
-    unlockRegion(userId, "baiyun");
+    if (unlockRegion(userId, "panyu")) newlyUnlocked.push("panyu");
+    if (unlockRegion(userId, "baiyun")) newlyUnlocked.push("baiyun");
   }
   // 打卡18个锚点 → 解锁黄埔
-  if (checkedCount >= 18) unlockRegion(userId, "huangpu");
+  if (checkedCount >= 18 && unlockRegion(userId, "huangpu")) newlyUnlocked.push("huangpu");
+
+  return newlyUnlocked;
 }
 
-function unlockRegion(userId: string, regionId: string) {
-  // 更新区域主表
-  db.update(schema.regions).set({ unlocked: true })
-    .where(eq(schema.regions.id, regionId)).run();
+function unlockRegion(userId: string, regionId: string): boolean {
+  // 检查该用户是否已解锁此区域
+  const existingProgress = db.select().from(userRegionProgress)
+    .where(and(
+      eq(userRegionProgress.user_id, userId),
+      eq(userRegionProgress.region_id, regionId),
+    )).get();
 
-  // 解锁该区域所有锚点
-  const regionAnchors = db.select().from(anchors)
-    .where(eq(anchors.region_id, regionId)).all();
+  if (!existingProgress) {
+    db.insert(userRegionProgress).values({
+      user_id: userId,
+      region_id: regionId,
+      unlocked_at: new Date().toISOString(),
+    }).run();
 
-  for (const a of regionAnchors) {
-    const existing = db.select().from(userAnchors)
-      .where(and(eq(userAnchors.user_id, userId), eq(userAnchors.anchor_id, a.id))).get();
-    if (existing) {
-      db.update(userAnchors).set({ unlocked: true })
-        .where(eq(userAnchors.id, existing.id)).run();
-    } else {
-      db.insert(userAnchors).values({
-        user_id: userId, anchor_id: a.id, checked: false, unlocked: true,
-      }).run();
+    // 解锁该区域所有锚点
+    const regionAnchors = db.select().from(anchors)
+      .where(eq(anchors.region_id, regionId)).all();
+
+    for (const a of regionAnchors) {
+      const existing = db.select().from(userAnchors)
+        .where(and(eq(userAnchors.user_id, userId), eq(userAnchors.anchor_id, a.id))).get();
+      if (existing) {
+        db.update(userAnchors).set({ unlocked: true })
+          .where(eq(userAnchors.id, existing.id)).run();
+      } else {
+        db.insert(userAnchors).values({
+          user_id: userId, anchor_id: a.id, checked: false, unlocked: true,
+        }).run();
+      }
     }
+    return true;
   }
+  return false;
 }
 
 // ── 连续打卡天数 ──

@@ -3,11 +3,24 @@ import { createFormDataFile } from '@/utils';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
 
+// 同步获取 token（Native 端由 AuthContext 在 login 时同步写入内存兜底）
 function getAuthToken(): string | null {
   if (Platform.OS === 'web') {
     return localStorage.getItem('auth_token');
   }
   return (globalThis as any).__auth_token || null;
+}
+
+// Native 端：AuthContext 登录时调用此函数，将 token 同步写入内存兜底
+// （SecureStore 是异步的，API 层需要同步读取）
+export function setAuthToken(token: string | null) {
+  if (Platform.OS === 'web') {
+    if (token) localStorage.setItem('auth_token', token);
+    else localStorage.removeItem('auth_token');
+  } else {
+    if (token) (globalThis as any).__auth_token = token;
+    else delete (globalThis as any).__auth_token;
+  }
 }
 
 function authHeaders(): Record<string, string> {

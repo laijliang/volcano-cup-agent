@@ -21,6 +21,7 @@ import { Spinner, Dialog, Skeleton, useToast } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useSafeSearchParams } from '@/hooks/useSafeRouter';
 import LeafletMap from '@/components/LeafletMap';
+import NpcChatDialog from '@/components/NpcChatDialog';
 
 const isWeb = Platform.OS === 'web';
 
@@ -95,6 +96,9 @@ export default function MapScreen() {
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+
+  // NPC 对话状态
+  const [npcDialogOpen, setNpcDialogOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -476,6 +480,23 @@ export default function MapScreen() {
     fontSize: 15,
     fontWeight: '600',
   },
+  npcChatBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  npcChatEmoji: {
+    fontSize: 16,
+  },
+  npcChatText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   previewImage: {
     width: '100%',
     height: 200,
@@ -730,6 +751,16 @@ export default function MapScreen() {
                     </TouchableOpacity>
                   </LinearGradient>
                 )}
+                {selectedAnchor.type === 'food' && (
+                  <TouchableOpacity
+                    style={[styles.npcChatBtn, { backgroundColor: t.goldLight, borderColor: t.goldBorder }]}
+                    onPress={() => setNpcDialogOpen(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.npcChatEmoji}>👴</Text>
+                    <Text style={[styles.npcChatText, { color: t.gold }]}>和当地人聊聊</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           )}
@@ -780,6 +811,15 @@ export default function MapScreen() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog>
+
+      {/* NPC 对话弹窗 */}
+      <NpcChatDialog
+        open={npcDialogOpen}
+        onClose={() => setNpcDialogOpen(false)}
+        npcId="npc-old-guangzhou"
+        npcName="老广阿伯"
+        anchorName={selectedAnchor?.name}
+      />
     </Screen>
   );
 }
