@@ -97,3 +97,7 @@ expo-env.d.ts
 *.tsbuildinfo
 node-compile-cache/
 .preview
+
+# SQLite database
+server/data/
+*.db

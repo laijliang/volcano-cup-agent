@@ -3,6 +3,7 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || "9091"),
+  origin: process.env.SERVER_ORIGIN || `http://localhost:${parseInt(process.env.PORT || "9091")}`,
 
   llm: {
     apiKey: process.env.LLM_API_KEY || "",

@@ -1,237 +1,296 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { v4 as uuidv4 } from "uuid";
+import { eq, and, desc } from "drizzle-orm";
 import { config } from "./config";
+import { db, schema } from "./db";
+import { seed } from "./db/seed";
 import { chatWithAsui, chatWithNpc, type ChatMessage } from "./services/agent";
+import { optionalAuth } from "./middleware/auth";
+import { validate, loginSchema, updateUserSchema, chatSchema, npcChatSchema } from "./middleware/validate";
+import { afterCheckin, getConsecutiveDays } from "./services/engine";
 
 const app = express();
 const port = config.port;
 
-// Middleware
+// ── 上传目录 ──
+const uploadsDir = path.join(import.meta.dirname, "..", "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// ── Middleware ──
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use("/uploads", express.static(uploadsDir));
 
-// 文件上传配置
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || ".jpg";
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// 健康检查
+// ── 健康检查 ──
 app.get("/api/v1/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// ==================== 用户相关 ====================
-interface User {
-  id: string;
-  name: string;
-  avatar: string;
-  level: number;
-  exp: number;
-  created_at: string;
-}
+// ==================== 认证 ====================
 
-let users: User[] = [
-  {
-    id: "1",
-    name: "羊城探索者",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100",
-    level: 5,
-    exp: 1250,
-    created_at: "2026-05-01",
-  },
-];
+// 注册 / 登录（手机号 + 昵称）
+app.post("/api/v1/auth/login", validate(loginSchema), (req, res) => {
+  const { phone, name } = req.body;
+  if (!phone?.trim()) {
+    return res.status(400).json({ error: "手机号不能为空" });
+  }
 
-app.get("/api/v1/user/me", (_req, res) => {
-  res.json(users[0]);
+  // 查找或创建用户
+  let user = db.select().from(schema.users).where(eq(schema.users.id, phone)).get();
+
+  if (!user) {
+    const now = new Date().toISOString();
+    db.insert(schema.users).values({
+      id: phone,
+      name: name?.trim() || `旅行者${phone.slice(-4)}`,
+      avatar: "",
+      level: 1,
+      exp: 0,
+      created_at: now,
+    }).run();
+    user = db.select().from(schema.users).where(eq(schema.users.id, phone)).get()!;
+  }
+
+  // 生成 token
+  const token = uuidv4();
+  db.insert(schema.authTokens).values({
+    user_id: phone,
+    token,
+    created_at: new Date().toISOString(),
+  }).run();
+
+  res.json({ token, user });
 });
 
-app.put("/api/v1/user/me", (req, res) => {
+// 登出
+app.post("/api/v1/auth/logout", (req, res) => {
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) {
+    db.delete(schema.authTokens).where(eq(schema.authTokens.token, header.slice(7))).run();
+  }
+  res.json({ ok: true });
+});
+
+// 所有业务路由使用可选认证（向后兼容）
+app.use("/api/v1/", optionalAuth);
+
+// ==================== 用户 ====================
+
+app.get("/api/v1/user/me", (req, res) => {
+  const user = db.select().from(schema.users).where(eq(schema.users.id, req.userId!)).get();
+  if (!user) return res.status(404).json({ error: "User not found" });
+  res.json(user);
+});
+
+app.put("/api/v1/user/me", validate(updateUserSchema), (req, res) => {
   const { name, avatar } = req.body;
-  if (name) users[0].name = name;
-  if (avatar) users[0].avatar = avatar;
-  res.json(users[0]);
+  db.update(schema.users).set({
+    ...(name ? { name } : {}),
+    ...(avatar ? { avatar } : {}),
+  }).where(eq(schema.users.id, req.userId!)).run();
+  const user = db.select().from(schema.users).where(eq(schema.users.id, req.userId!)).get();
+  res.json(user);
 });
 
-// ==================== 区域相关 ====================
-interface Region {
-  id: string;
-  name: string;
-  subtitle: string;
-  color: string;
-  icon: string;
-  unlocked: boolean;
-}
-
-const regions: Region[] = [
-  { id: "yuexiu", name: "越秀", subtitle: "五羊圣地", color: "#8B4513", icon: "landmark", unlocked: true },
-  { id: "liwan", name: "荔湾", subtitle: "西关风华", color: "#DAA520", icon: "store", unlocked: true },
-  { id: "haizhu", name: "海珠", subtitle: "珠水映城", color: "#4682B4", icon: "water", unlocked: false },
-  { id: "tianhe", name: "天河", subtitle: "都市新核", color: "#9370DB", icon: "building", unlocked: false },
-  { id: "panyu", name: "番禺", subtitle: "古邑新章", color: "#228B22", icon: "tree", unlocked: false },
-  { id: "baiyun", name: "白云", subtitle: "云山叠翠", color: "#87CEEB", icon: "mountain", unlocked: false },
-  { id: "huangpu", name: "黄埔", subtitle: "海丝古港", color: "#CD853F", icon: "ship", unlocked: false },
-];
+// ==================== 区域 ====================
 
 app.get("/api/v1/regions", (_req, res) => {
+  const regions = db.select().from(schema.regions).all();
   res.json(regions);
 });
 
-// ==================== 锚点相关 ====================
-interface Anchor {
-  id: string;
-  name: string;
-  region_id: string;
-  latitude: number;
-  longitude: number;
-  type: "landmark" | "food" | "secret";
-  unlocked: boolean;
-  checked: boolean;
-  description: string;
-}
+// ==================== 锚点 ====================
 
-const anchors: Anchor[] = [
-  { id: "1", name: "五羊石像", region_id: "yuexiu", latitude: 23.1291, longitude: 113.2644, type: "landmark", unlocked: true, checked: true, description: "广州城市标志，五羊传说的发源地" },
-  { id: "2", name: "镇海楼", region_id: "yuexiu", latitude: 23.135, longitude: 113.261, type: "landmark", unlocked: true, checked: true, description: "岭南第一楼，始建于明朝" },
-  { id: "3", name: "陈家祠", region_id: "liwan", latitude: 23.1295, longitude: 113.242, type: "landmark", unlocked: true, checked: false, description: "广东民间工艺博物馆，建筑艺术瑰宝" },
-  { id: "4", name: "点都德", region_id: "yuexiu", latitude: 23.1275, longitude: 113.258, type: "food", unlocked: true, checked: false, description: "老字号茶楼，早茶必去" },
-  { id: "5", name: "沙面岛", region_id: "liwan", latitude: 23.1195, longitude: 113.244, type: "secret", unlocked: true, checked: false, description: "隐秘角落，充满历史感的欧式建筑群" },
-  { id: "6", name: "永庆坊", region_id: "liwan", latitude: 23.118, longitude: 113.24, type: "landmark", unlocked: false, checked: false, description: "恩宁路历史文化街区，活化更新典范" },
-];
+app.get("/api/v1/anchors", (req, res) => {
+  const allAnchors = db.select().from(schema.anchors).all();
+  const userProgress = db.select().from(schema.userAnchors)
+    .where(eq(schema.userAnchors.user_id, req.userId!)).all();
+  const progressMap = new Map(userProgress.map(p => [p.anchor_id, p]));
 
-app.get("/api/v1/anchors", (_req, res) => {
-  res.json(anchors);
+  const result = allAnchors.map(a => ({
+    ...a,
+    unlocked: progressMap.get(a.id)?.unlocked ?? false,
+    checked: progressMap.get(a.id)?.checked ?? false,
+  }));
+  res.json(result);
 });
 
 app.get("/api/v1/anchors/:regionId", (req, res) => {
   const { regionId } = req.params;
-  const regionAnchors = anchors.filter((a) => a.region_id === regionId);
-  res.json(regionAnchors);
+  const regionAnchors = db.select().from(schema.anchors)
+    .where(eq(schema.anchors.region_id, regionId)).all();
+  const userProgress = db.select().from(schema.userAnchors)
+    .where(eq(schema.userAnchors.user_id, req.userId!)).all();
+  const progressMap = new Map(userProgress.map(p => [p.anchor_id, p]));
+
+  const result = regionAnchors.map(a => ({
+    ...a,
+    unlocked: progressMap.get(a.id)?.unlocked ?? false,
+    checked: progressMap.get(a.id)?.checked ?? false,
+  }));
+  res.json(result);
 });
 
-// ==================== 打卡相关 ====================
-interface Checkin {
-  id: string;
-  anchor_id: string;
-  user_id: string;
-  image_url: string;
-  created_at: string;
-  location: string;
-}
+// ==================== 打卡 ====================
 
-let checkins: Checkin[] = [
-  { id: "1", anchor_id: "1", user_id: "1", image_url: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200", created_at: "2026-05-20", location: "越秀区" },
-  { id: "2", anchor_id: "2", user_id: "1", image_url: "https://images.unsplash.com/photo-1565967511849-76a60a516170?w=200", created_at: "2026-05-18", location: "越秀区" },
-  { id: "3", anchor_id: "4", user_id: "1", image_url: "https://images.unsplash.com/photo-1555244162-803834f70033?w=200", created_at: "2026-05-18", location: "荔湾区" },
-];
-
-app.get("/api/v1/checkins", (_req, res) => {
-  const userCheckins = checkins.filter((c) => c.user_id === "1");
+app.get("/api/v1/checkins", (req, res) => {
+  const userCheckins = db.select().from(schema.checkins)
+    .where(eq(schema.checkins.user_id, req.userId!))
+    .orderBy(desc(schema.checkins.created_at)).all();
   res.json(userCheckins);
 });
 
 app.get("/api/v1/checkins/:date", (req, res) => {
   const { date } = req.params;
-  const dayCheckins = checkins.filter((c) => c.created_at === date);
+  const dayCheckins = db.select().from(schema.checkins)
+    .where(and(
+      eq(schema.checkins.user_id, req.userId!),
+      eq(schema.checkins.created_at, date),
+    )).all();
   res.json(dayCheckins);
 });
 
 app.post("/api/v1/checkins", upload.single("image"), (req, res) => {
-  const { anchor_id, location } = req.body;
-  const newCheckin: Checkin = {
+  const { anchor_id, location, latitude, longitude } = req.body;
+
+  // 查找锚点
+  const anchor = db.select().from(schema.anchors).where(eq(schema.anchors.id, anchor_id)).get();
+  if (!anchor) {
+    return res.status(404).json({ error: "锚点不存在" });
+  }
+
+  // GPS 距离验证（50m 阈值）
+  if (latitude !== undefined && longitude !== undefined) {
+    const userLat = parseFloat(latitude);
+    const userLng = parseFloat(longitude);
+    if (!isNaN(userLat) && !isNaN(userLng)) {
+      const dist = haversineDistance(userLat, userLng, anchor.latitude, anchor.longitude);
+      const MAX_DISTANCE = parseFloat(process.env.CHECKIN_MAX_DISTANCE || "50");
+      if (dist > MAX_DISTANCE) {
+        return res.status(400).json({
+          error: `距离锚点太远（${Math.round(dist)}m > ${MAX_DISTANCE}m）`,
+          distance: Math.round(dist),
+        });
+      }
+    }
+  }
+
+  const filename = req.file?.filename;
+  const image_url = filename ? `${config.origin}/uploads/${filename}` : "";
+  const today = new Date().toISOString().split("T")[0];
+
+  const newCheckin = {
     id: Date.now().toString(),
     anchor_id,
-    user_id: "1",
-    image_url: req.file ? `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}` : "",
-    created_at: new Date().toISOString().split("T")[0],
+    user_id: req.userId!,
+    image_url,
+    created_at: today,
     location: location || "",
   };
-  checkins.push(newCheckin);
 
-  const anchor = anchors.find((a) => a.id === anchor_id);
-  if (anchor) anchor.checked = true;
+  db.insert(schema.checkins).values(newCheckin).run();
+
+  // 更新锚点打卡状态
+  const existing = db.select().from(schema.userAnchors)
+    .where(and(
+      eq(schema.userAnchors.user_id, req.userId!),
+      eq(schema.userAnchors.anchor_id, anchor_id),
+    )).get();
+
+  if (existing) {
+    db.update(schema.userAnchors).set({ checked: true })
+      .where(eq(schema.userAnchors.id, existing.id)).run();
+  } else {
+    db.insert(schema.userAnchors).values({
+      user_id: req.userId!, anchor_id, checked: true, unlocked: true,
+    }).run();
+  }
+
+  // 触发业务引擎：任务进度、成就、区域解锁
+  try {
+    afterCheckin(req.userId!, anchor_id);
+  } catch (e) {
+    console.error("Engine error:", e);
+  }
 
   res.status(201).json(newCheckin);
 });
 
-// ==================== 任务相关 ====================
-interface MainQuest {
-  id: string;
-  chapter: string;
-  title: string;
-  subtitle: string;
-  progress: number;
-  total: number;
-  status: "active" | "locked" | "completed";
-  region: string;
-  reward: string;
-}
+// ==================== 文件上传 ====================
 
-interface SideQuest {
-  id: string;
-  type: "food" | "culture" | "secret";
-  title: string;
-  subtitle: string;
-  progress: number;
-  total: number;
-  status: "active" | "locked" | "completed" | "hidden";
-  reward: number;
-  locations: string[];
-}
-
-const mainQuests: MainQuest[] = [
-  { id: "1", chapter: "第一章", title: "寻穗之旅", subtitle: "初到广州，探索五羊圣地", progress: 3, total: 5, status: "active", region: "yuexiu", reward: "解锁镇海楼区域" },
-  { id: "2", chapter: "第二章", title: "西关风情", subtitle: "走进荔湾，感受岭南韵味", progress: 0, total: 6, status: "locked", region: "liwan", reward: "解锁永庆坊" },
-  { id: "3", chapter: "第三章", title: "珠江夜游", subtitle: "跨越珠水，眺望小蛮腰", progress: 0, total: 5, status: "locked", region: "haizhu", reward: "解锁广州塔" },
-];
-
-const sideQuests: SideQuest[] = [
-  { id: "s1", type: "food", title: "早茶达人", subtitle: "品尝3家地道茶楼", progress: 1, total: 3, status: "active", reward: 50, locations: ["点都德", "陶陶居", "莲香楼"] },
-  { id: "s2", type: "culture", title: "博物馆探索", subtitle: "参观2家博物馆", progress: 2, total: 2, status: "completed", reward: 80, locations: ["南越王博物院", "广东省博物馆"] },
-  { id: "s3", type: "food", title: "肠粉寻味", subtitle: "寻找最正宗的布拉肠", progress: 0, total: 4, status: "locked", reward: 30, locations: [] },
-  { id: "s4", type: "secret", title: "隐藏任务：老广的记忆", subtitle: "发现沙面岛的秘密...", progress: 0, total: 1, status: "hidden", reward: 200, locations: [] },
-];
-
-app.get("/api/v1/quests/main", (_req, res) => {
-  res.json(mainQuests);
+app.post("/api/v1/upload", upload.single("image"), (req, res) => {
+  const filename = req.file?.filename;
+  if (!filename) return res.status(400).json({ error: "请选择图片" });
+  res.json({ url: `${config.origin}/uploads/${filename}` });
 });
 
-app.get("/api/v1/quests/side", (_req, res) => {
-  res.json(sideQuests);
+// ==================== 任务 ====================
+
+app.get("/api/v1/quests/main", (req, res) => {
+  const userId = req.userId!;
+  const quests = db.select().from(schema.mainQuests).all();
+  const result = quests.map(q => {
+    const up = db.select().from(schema.userMainQuestProgress)
+      .where(and(
+        eq(schema.userMainQuestProgress.user_id, userId),
+        eq(schema.userMainQuestProgress.quest_id, q.id),
+      )).get();
+    return {
+      ...q,
+      progress: up?.progress ?? 0,
+      status: up?.status ?? q.status,
+    };
+  });
+  res.json(result);
 });
 
-// ==================== 成就相关 ====================
-interface Achievement {
-  id: string;
-  name: string;
-  icon: string;
-  unlocked: boolean;
-  color: string;
-}
+app.get("/api/v1/quests/side", (req, res) => {
+  const userId = req.userId!;
+  const quests = db.select().from(schema.sideQuests).all();
+  const result = quests.map(q => {
+    const up = db.select().from(schema.userSideQuestProgress)
+      .where(and(
+        eq(schema.userSideQuestProgress.user_id, userId),
+        eq(schema.userSideQuestProgress.quest_id, q.id),
+      )).get();
+    return {
+      ...q,
+      progress: up?.progress ?? 0,
+      status: up?.status ?? q.status,
+      locations: JSON.parse(q.locations || "[]"),
+    };
+  });
+  res.json(result);
+});
 
-const achievements: Achievement[] = [
-  { id: "1", name: "初来乍到", icon: "star", unlocked: true, color: "#FFD700" },
-  { id: "2", name: "五羊探索者", icon: "map", unlocked: true, color: "#8B4513" },
-  { id: "3", name: "美食猎人", icon: "utensils", unlocked: true, color: "#E85D4C" },
-  { id: "4", name: "连续7天", icon: "fire", unlocked: true, color: "#FF6B35" },
-  { id: "5", name: "西关漫步", icon: "walking", unlocked: false, color: "#DAA520" },
-  { id: "6", name: "博物馆迷", icon: "landmark", unlocked: false, color: "#2D7D46" },
-  { id: "7", name: "夜景达人", icon: "moon", unlocked: false, color: "#4682B4" },
-  { id: "8", name: "隐藏成就", icon: "question", unlocked: false, color: "#999" },
-];
+// ==================== 成就 ====================
 
 app.get("/api/v1/achievements", (_req, res) => {
-  res.json(achievements);
+  const all = db.select().from(schema.achievements).all();
+  res.json(all);
 });
 
 // ==================== AI 对话 ====================
 
-// 对话历史（内存存储，MVP 阶段）
-const chatHistories = new Map<string, ChatMessage[]>();
-
-app.post("/api/v1/chat", async (req, res) => {
+app.post("/api/v1/chat", validate(chatSchema), async (req, res) => {
   try {
     const { message, context } = req.body;
 
@@ -239,11 +298,17 @@ app.post("/api/v1/chat", async (req, res) => {
       return res.status(400).json({ error: "消息不能为空" });
     }
 
-    const userId = context?.userId || "1";
-    if (!chatHistories.has(userId)) {
-      chatHistories.set(userId, []);
-    }
-    const history = chatHistories.get(userId)!;
+    const userId = req.userId!;
+
+    // 从数据库加载最近 20 条对话历史
+    const dbHistory = db.select().from(schema.chatHistory)
+      .where(eq(schema.chatHistory.user_id, userId))
+      .orderBy(desc(schema.chatHistory.created_at))
+      .limit(20).all();
+    const history: ChatMessage[] = dbHistory.reverse().map(h => ({
+      role: h.role as "user" | "assistant",
+      content: h.content,
+    }));
 
     const userContext = {
       userName: context?.userName || "旅行者",
@@ -258,17 +323,27 @@ app.post("/api/v1/chat", async (req, res) => {
 
     const reply = await chatWithAsui(message, userContext, history);
 
-    // 保存对话历史（保留最近 20 条）
-    history.push({ role: "user", content: message });
-    history.push({ role: "assistant", content: reply });
-    if (history.length > 20) {
-      history.splice(0, history.length - 20);
+    // 持久化对话到数据库
+    const now = new Date().toISOString();
+    db.insert(schema.chatHistory).values({ user_id: userId, role: "user", content: message, created_at: now }).run();
+    db.insert(schema.chatHistory).values({ user_id: userId, role: "assistant", content: reply, created_at: now }).run();
+
+    // 保留最近 20 条（删除旧记录）
+    const allHistory = db.select({ id: schema.chatHistory.id })
+      .from(schema.chatHistory)
+      .where(eq(schema.chatHistory.user_id, userId))
+      .orderBy(desc(schema.chatHistory.created_at)).all();
+    if (allHistory.length > 40) {
+      const idsToDelete = allHistory.slice(40).map(h => h.id);
+      for (const id of idsToDelete) {
+        db.delete(schema.chatHistory).where(eq(schema.chatHistory.id, id)).run();
+      }
     }
 
     res.json({
       reply,
       agent: "阿穗",
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     });
   } catch (error) {
     console.error("Chat error:", error);
@@ -276,8 +351,8 @@ app.post("/api/v1/chat", async (req, res) => {
   }
 });
 
-// NPC 对话（支线任务触发）
-app.post("/api/v1/chat/npc", async (req, res) => {
+// NPC 对话
+app.post("/api/v1/chat/npc", validate(npcChatSchema), async (req, res) => {
   try {
     const { message, npcId, context } = req.body;
 
@@ -308,26 +383,44 @@ app.post("/api/v1/chat/npc", async (req, res) => {
   }
 });
 
-// ==================== 统计相关 ====================
-app.get("/api/v1/stats", (_req, res) => {
-  const unlockedRegions = regions.filter((r) => r.unlocked).length;
-  const checkedAnchors = anchors.filter((a) => a.checked).length;
-  const completedQuests = sideQuests.filter((q) => q.status === "completed").length;
+// ==================== 统计 ====================
+
+app.get("/api/v1/stats", (req, res) => {
+  const userId = req.userId!;
+  const allRegions = db.select().from(schema.regions).all();
+  const allAnchors = db.select().from(schema.anchors).all();
+  const checkedAnchors = db.select().from(schema.userAnchors)
+    .where(and(
+      eq(schema.userAnchors.user_id, userId),
+      eq(schema.userAnchors.checked, true),
+    )).all();
+  const checkins = db.select().from(schema.checkins)
+    .where(eq(schema.checkins.user_id, userId)).all();
+  const achievements = db.select().from(schema.achievements).all();
+  const user = db.select().from(schema.users).where(eq(schema.users.id, userId)).get();
+
+  const mainQuestProgress = db.select().from(schema.userMainQuestProgress)
+    .where(eq(schema.userMainQuestProgress.user_id, userId)).all();
+  const sideQuestProgress = db.select().from(schema.userSideQuestProgress)
+    .where(eq(schema.userSideQuestProgress.user_id, userId)).all();
 
   res.json({
-    total_regions: regions.length,
-    unlocked_regions: unlockedRegions,
-    total_anchors: anchors.length,
-    checked_anchors: checkedAnchors,
+    total_regions: allRegions.length,
+    unlocked_regions: allRegions.filter(r => r.unlocked).length,
+    total_anchors: allAnchors.length,
+    checked_anchors: checkedAnchors.length,
     total_checkins: checkins.length,
     total_achievements: achievements.length,
-    unlocked_achievements: achievements.filter((a) => a.unlocked).length,
-    total_quests: sideQuests.length,
-    completed_quests: completedQuests,
-    total_side_quests: sideQuests.length,
-    completed_side_quests: completedQuests,
-    user_level: users[0].level,
-    user_exp: users[0].exp,
+    unlocked_achievements: achievements.filter(a => a.unlocked).length,
+    total_main_quests: mainQuestProgress.length,
+    completed_main_quests: mainQuestProgress.filter(q => q.status === "completed").length,
+    active_main_quests: mainQuestProgress.filter(q => q.status === "active").length,
+    total_side_quests: sideQuestProgress.length,
+    completed_side_quests: sideQuestProgress.filter(q => q.status === "completed").length,
+    active_side_quests: sideQuestProgress.filter(q => q.status === "active").length,
+    user_level: user?.level || 1,
+    user_exp: user?.exp || 0,
+    consecutive_days: getConsecutiveDays(userId),
   });
 });
 
@@ -340,6 +433,24 @@ function getTimeOfDay(): string {
   return "傍晚";
 }
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}/`);
+// Haversine 公式计算两点间距离（米）
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // 地球半径（米）
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// ── 启动 ──
+seed().then(() => {
+  app.listen(port, () => {
+    console.log(`Server listening at http://localhost:${port}/`);
+  });
 });

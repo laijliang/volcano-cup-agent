@@ -19,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "bundleIdentifier": "com.example.gztravel",
       "config": {
         "amap": {
-          "apiKey": "c5940539ec568301d498ff1c4625fc2b"
+          "apiKey": process.env.EXPO_PUBLIC_AMAP_API_KEY || ""
         }
       }
     },
@@ -31,7 +31,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "package": "com.example.gztravel",
       "config": {
         "amap": {
-          "apiKey": "c5940539ec568301d498ff1c4625fc2b"
+          "apiKey": process.env.EXPO_PUBLIC_AMAP_API_KEY || ""
         }
       },
       "permissions": [

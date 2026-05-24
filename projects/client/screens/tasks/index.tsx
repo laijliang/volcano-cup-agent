@@ -6,13 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
+
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { Screen } from '@/components/Screen';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Skeleton } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { getMainQuests, getSideQuests, getStats } from '@/services/api';
 
@@ -53,7 +54,7 @@ const FILTER_OPTIONS = ['全部', '美食', '人文', '隐藏'];
 
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const router = useSafeRouter();
   const t = useAppTheme();
   const [activeTab, setActiveTab] = useState<'main' | 'side'>('main');
   const [activeFilter, setActiveFilter] = useState('全部');
@@ -119,7 +120,7 @@ export default function TasksScreen() {
   );
 
   const handleContinueQuest = (quest: MainQuest) => {
-    router.navigate({ pathname: '/(tabs)/map', params: { region: quest.region } });
+    router.navigate('/(tabs)/map', { region: quest.region });
   };
 
   const renderMainQuest = (quest: MainQuest) => {
@@ -184,7 +185,7 @@ export default function TasksScreen() {
           >
             <TouchableOpacity style={styles.continueButtonInner} onPress={() => handleContinueQuest(quest)}>
               <Text style={styles.continueButtonText}>继续任务</Text>
-              <FontAwesome6 name="arrow-right" size={14} color="#FFF" />
+              <FontAwesome6 name="arrow-right" size={14} color={t.textInverse} />
             </TouchableOpacity>
           </LinearGradient>
         )}
@@ -227,7 +228,7 @@ export default function TasksScreen() {
               </Text>
               {isCompleted && (
                 <View style={styles.completedBadge}>
-                  <FontAwesome6 name="check" size={10} color="#FFF" />
+                  <FontAwesome6 name="check" size={10} color={t.textInverse} />
                 </View>
               )}
             </View>
@@ -390,7 +391,7 @@ export default function TasksScreen() {
     color: t.textSecondary,
   },
   tabTextActive: {
-    color: '#FFF',
+    color: t.textInverse,
   },
   questList: {
     flex: 1,
@@ -571,7 +572,7 @@ export default function TasksScreen() {
     gap: 8,
   },
   continueButtonText: {
-    color: '#FFF',
+    color: t.textInverse,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -598,7 +599,7 @@ export default function TasksScreen() {
     fontWeight: '600',
   },
   filterTextActive: {
-    color: '#FFF',
+    color: t.textInverse,
   },
   sideQuestCard: {
     backgroundColor: t.surface,
@@ -753,17 +754,6 @@ export default function TasksScreen() {
     color: t.textSecondary,
     fontWeight: '600',
   },
-  loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingBottom: 60,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: t.textSecondary,
-  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -780,11 +770,30 @@ export default function TasksScreen() {
       <Screen>
         <View style={styles.container}>
           <View style={[styles.header, { paddingTop: 10 }]}>
-            <Text style={styles.headerTitle}>任务中心</Text>
+            <Skeleton variant="shimmer" style={{ width: 120, height: 24, borderRadius: 6 }} />
           </View>
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color={t.primary} />
-            <Text style={styles.loadingText}>加载任务中...</Text>
+          {/* 主任务骨架 */}
+          <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
+            <Skeleton variant="shimmer" style={{ width: 80, height: 16, borderRadius: 4, marginBottom: 12 }} />
+            {[1, 2].map((i) => (
+              <Skeleton key={i} variant="shimmer" style={{ width: '100%', height: 80, borderRadius: 16, marginBottom: 10 }} />
+            ))}
+          </View>
+          {/* 支线任务骨架 */}
+          <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
+            <Skeleton variant="shimmer" style={{ width: 80, height: 16, borderRadius: 4, marginBottom: 12 }} />
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} variant="shimmer" style={{ width: '100%', height: 60, borderRadius: 14, marginBottom: 8 }} />
+            ))}
+          </View>
+          {/* 成就骨架 */}
+          <View style={{ paddingHorizontal: 16 }}>
+            <Skeleton variant="shimmer" style={{ width: 80, height: 16, borderRadius: 4, marginBottom: 12 }} />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} variant="shimmer" style={{ width: 80, height: 80, borderRadius: 16 }} />
+              ))}
+            </View>
           </View>
         </View>
       </Screen>

@@ -70,7 +70,7 @@ export default function TabLayout() {
         options={{
           title: '地图',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="map-location" size={24} color={color} />
+            <FontAwesome6 name="map-location" size={24} color={color} solid />
           ),
         }}
       />
@@ -97,7 +97,7 @@ export default function TabLayout() {
         options={{
           title: '我的',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="circle-user" size={24} color={color} />
+            <FontAwesome6 name="circle-user" size={24} color={color} solid />
           ),
         }}
       />

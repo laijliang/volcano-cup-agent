@@ -7,16 +7,19 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   RefreshControl,
+  Image,
+  TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { Screen } from '@/components/Screen';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getUserProfile, getAchievements, getStats } from '@/services/api';
+import * as ImagePicker from 'expo-image-picker';
+import { getUserProfile, getAchievements, getStats, updateUserProfile, uploadImage } from '@/services/api';
 import { useUniwind, Uniwind } from 'uniwind';
 import { useAppTheme } from '@/hooks/useAppTheme';
-import { Spinner, Avatar, Separator, Skeleton, useToast } from '@/heroui';
+import { Spinner, Avatar, Separator, Skeleton, useToast, Dialog } from '@/heroui';
 
 interface Achievement {
   id: string;
@@ -37,7 +40,7 @@ interface UserProfile {
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const router = useSafeRouter();
   const { theme } = useUniwind();
   const { toast } = useToast();
   const t = useAppTheme();
@@ -49,6 +52,11 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAllAchievements, setShowAllAchievements] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAvatar, setEditAvatar] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -79,7 +87,58 @@ export default function ProfileScreen() {
   }, [loadData]);
 
   const handleEditProfile = () => {
-    toast.show({ label: '编辑资料', description: '修改昵称和头像功能即将上线～' });
+    setEditName(user?.name || '');
+    setEditAvatar(user?.avatar || '');
+    setEditModalVisible(true);
+  };
+
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      toast.show({ label: '提示', description: '需要相册权限才能更换头像' });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setEditAvatar(result.assets[0].uri);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      toast.show({ label: '提示', description: '昵称不能为空' });
+      return;
+    }
+    try {
+      setIsSaving(true);
+      let avatarUrl = editAvatar;
+
+      // 如果是本地文件（非 URL），先上传
+      if (editAvatar && (editAvatar.startsWith('file://') || editAvatar.startsWith('/') || editAvatar.startsWith('content://'))) {
+        setIsUploading(true);
+        const { url } = await uploadImage(editAvatar);
+        avatarUrl = url;
+        setIsUploading(false);
+      }
+
+      const updated = await updateUserProfile({
+        name: editName.trim(),
+        ...(avatarUrl ? { avatar: avatarUrl } : {}),
+      });
+      setUser(updated);
+      setEditModalVisible(false);
+      toast.show({ label: '已保存', description: '个人资料已更新', variant: 'success' });
+    } catch (error: any) {
+      toast.show({ label: '保存失败', description: error.message || '请稍后重试' });
+    } finally {
+      setIsSaving(false);
+      setIsUploading(false);
+    }
   };
 
   const handleChatWithAsui = () => {
@@ -175,12 +234,12 @@ export default function ProfileScreen() {
     paddingVertical: 2,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#FFF',
+    borderColor: t.textInverse,
   },
   levelText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#FFF',
+    color: t.textInverse,
   },
   profileInfo: {
     flex: 1,
@@ -412,7 +471,7 @@ export default function ProfileScreen() {
   badgeText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#FFF',
+    color: t.textInverse,
   },
   versionInfo: {
     alignItems: 'center',
@@ -498,7 +557,7 @@ export default function ProfileScreen() {
           />
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              <Avatar size="lg" alt={`${user?.name || 'User'}'s avatar`} className="w-[72px] h-[72px] rounded-full border-3 border-[#2D7D46] shadow-primary">
+              <Avatar size="lg" alt={`${user?.name || 'User'}'s avatar`} className="w-[72px] h-[72px] rounded-full shadow-primary" style={{ borderWidth: 3, borderColor: t.primary }}>
                 <Avatar.Image
                   source={{ uri: user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' }}
                 />
@@ -545,7 +604,7 @@ export default function ProfileScreen() {
               style={styles.chatButtonGradient}
             >
               <TouchableOpacity style={styles.chatButtonInner} onPress={handleChatWithAsui} activeOpacity={0.7}>
-                <FontAwesome6 name="comment-dots" size={18} color="#FFF" />
+                <FontAwesome6 name="comment-dots" size={18} color={t.textInverse} />
               </TouchableOpacity>
             </LinearGradient>
           </View>
@@ -585,13 +644,13 @@ export default function ProfileScreen() {
                 <View
                   style={[
                     styles.achievementIcon,
-                    { backgroundColor: achievement.unlocked ? achievement.color + '20' : '#F0F0F0' },
+                    { backgroundColor: achievement.unlocked ? achievement.color + '20' : t.border },
                   ]}
                 >
                   <FontAwesome6
                     name={achievement.icon as any}
                     size={24}
-                    color={achievement.unlocked ? achievement.color : '#CCC'}
+                    color={achievement.unlocked ? achievement.color : t.textTertiary}
                   />
                 </View>
                 <Text
@@ -649,6 +708,99 @@ export default function ProfileScreen() {
           <Text style={styles.versionText}>赛博派蒙·旅游搭子 v1.0.0</Text>
         </View>
       </ScrollView>
+
+      {/* 编辑资料弹窗 */}
+      <Dialog isOpen={editModalVisible} onOpenChange={setEditModalVisible}>
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content>
+            <Dialog.Close />
+            <Dialog.Title>编辑资料</Dialog.Title>
+
+            {/* 头像 */}
+            <View style={{ alignItems: 'center', marginTop: 16, marginBottom: 20 }}>
+              <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.7}>
+                <Image
+                  source={{ uri: editAvatar || user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' }}
+                  style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: t.primary }}
+                />
+                <View style={{
+                  position: 'absolute',
+                  bottom: -4,
+                  right: -4,
+                  backgroundColor: t.primary,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <FontAwesome6 name="camera" size={12} color={t.textInverse} />
+                </View>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 12, color: t.textTertiary, marginTop: 8 }}>点击更换头像</Text>
+            </View>
+
+            {/* 昵称 */}
+            <Text style={{ fontSize: 14, color: t.textSecondary, marginBottom: 6 }}>昵称</Text>
+            <TextInput
+              style={{
+                backgroundColor: t.surfaceSecondary,
+                borderRadius: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: t.text,
+                borderWidth: 1,
+                borderColor: t.border,
+              }}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="输入昵称"
+              placeholderTextColor={t.textTertiary}
+              maxLength={20}
+              autoFocus
+            />
+
+            {/* 按钮 */}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: t.surfaceSecondary,
+                  alignItems: 'center',
+                }}
+                disabled={isSaving}
+              >
+                <Text style={{ fontSize: 16, color: t.textSecondary, fontWeight: '600' }}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveProfile}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: t.primary,
+                  alignItems: 'center',
+                  opacity: isSaving ? 0.6 : 1,
+                }}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Spinner size="sm" color={t.textInverse} />
+                ) : (
+                  <Text style={{ fontSize: 16, color: t.textInverse, fontWeight: '600' }}>
+                    {isUploading ? '上传中...' : '保存'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog>
     </Screen>
   );
 }

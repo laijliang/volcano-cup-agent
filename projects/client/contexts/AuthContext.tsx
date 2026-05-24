@@ -1,18 +1,40 @@
-// @ts-nocheck
-/**
- * 通用认证上下文
- *
- * 基于固定的 API 接口实现，可复用到其他项目
- * 其他项目使用时，只需修改 @api 的导入路径指向项目的 api 模块
- *
- * 注意：
- * - 如果需要登录/鉴权场景，请扩展本文件，完善 login/logout、token 管理、用户信息获取与刷新等逻辑
- * - 将示例中的占位实现替换为项目实际的接口调用与状态管理
- */
-import React, { createContext, useContext, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { Platform } from "react-native";
+
+// ── 跨平台 token 存储 ──
+
+const storage = {
+  getToken(): string | null {
+    if (Platform.OS === "web") {
+      return localStorage.getItem("auth_token");
+    }
+    // native 端用内存变量（后续可替换为 expo-secure-store）
+    return (globalThis as any).__auth_token || null;
+  },
+  setToken(token: string) {
+    if (Platform.OS === "web") {
+      localStorage.setItem("auth_token", token);
+    } else {
+      (globalThis as any).__auth_token = token;
+    }
+  },
+  removeToken() {
+    if (Platform.OS === "web") {
+      localStorage.removeItem("auth_token");
+    } else {
+      delete (globalThis as any).__auth_token;
+    }
+  },
+};
+
+// ── 类型 ──
 
 interface UserOut {
-
+  id: string;
+  name: string;
+  avatar: string;
+  level: number;
+  exp: number;
 }
 
 interface AuthContextType {
@@ -20,30 +42,85 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (token: string) => Promise<void>;
+  login: (phone: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<UserOut>) => void;
 }
 
+const API_BASE = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || "http://localhost:9091";
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const value: AuthContextType = {
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    isLoading: false,
+  const [user, setUser] = useState<UserOut | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-    // 登录逻辑，根据项目实际情况实现
-    login: async (token: string) => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+  // 初始化：检查是否有已存储的 token
+  useEffect(() => {
+    const savedToken = storage.getToken();
+    if (savedToken) {
+      setToken(savedToken);
+      // 用 token 获取用户信息
+      fetch(`${API_BASE}/api/v1/user/me`, {
+        headers: { Authorization: `Bearer ${savedToken}` },
+      })
+        .then((r) => r.json())
+        .then((u) => {
+          if (u.id) setUser(u);
+          else storage.removeToken();
+        })
+        .catch(() => {})
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
+    }
+  }, []);
 
-    // 登出逻辑，根据项目实际情况实现
-    logout: async () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+  const login = useCallback(async (phone: string, name?: string) => {
+    const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, name }),
+    });
+    if (!res.ok) throw new Error("登录失败");
+    const data = await res.json();
+    storage.setToken(data.token);
+    setToken(data.token);
+    setUser(data.user);
+  }, []);
 
-    // 更新用户信息，根据项目实际情况实现
-    updateUser: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
-  };
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const logout = useCallback(async () => {
+    if (token) {
+      await fetch(`${API_BASE}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    storage.removeToken();
+    setToken(null);
+    setUser(null);
+  }, [token]);
+
+  const updateUser = useCallback((userData: Partial<UserOut>) => {
+    setUser((prev) => (prev ? { ...prev, ...userData } : null));
+  }, []);
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isAuthenticated: !!token && !!user,
+        isLoading,
+        login,
+        logout,
+        updateUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = (): AuthContextType => {

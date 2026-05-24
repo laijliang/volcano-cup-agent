@@ -16,7 +16,8 @@ import { Screen } from '@/components/Screen';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { sendChatMessage, createCheckin, getStats, type ChatMessage } from '@/services/api';
+import * as Location from 'expo-location';
+import { sendChatMessage, createCheckin, getStats, getAnchors, getMainQuests, type ChatMessage } from '@/services/api';
 import { Spinner, Dialog, Skeleton, useToast } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -29,16 +30,6 @@ const initialMessages: ChatMessage[] = [
     time: '08:30',
   },
 ];
-
-// 今日任务示例
-const todayTask = {
-  id: '1',
-  title: '五羊圣地',
-  subtitle: '探索越秀区的第一个锚点',
-  progress: 2,
-  total: 5,
-  reward: '解锁五羊石像区域',
-};
 
 // 快捷操作
 const quickActions = [
@@ -55,6 +46,17 @@ interface Stats {
   total_regions: number;
 }
 
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { toast } = useToast();
@@ -65,6 +67,7 @@ export default function HomeScreen() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [activeQuest, setActiveQuest] = useState<{ id: string; title: string; subtitle: string; progress: number; total: number; reward: string } | null>(null);
 
   // 打卡相关状态
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
@@ -72,15 +75,30 @@ export default function HomeScreen() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   useEffect(() => {
-    // 获取统计数据
     loadStats();
+    loadActiveQuest();
+  }, []);
 
-    // 滚动到底部
-    const timer = setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [messages]);
+  const loadActiveQuest = async () => {
+    try {
+      const quests = await getMainQuests();
+      const active = quests.find((q: any) => q.status === 'active');
+      if (active) {
+        setActiveQuest({
+          id: active.id,
+          title: active.chapter || active.title,
+          subtitle: active.subtitle || '',
+          progress: active.progress || 0,
+          total: active.total || 5,
+          reward: active.reward || '',
+        });
+      }
+    } catch (_) { /* quest load failed, keep skeleton */ }
+  };
+
+  const handleChatContentSizeChange = () => {
+    scrollViewRef.current?.scrollToEnd({ animated: false });
+  };
 
   const loadStats = async () => {
     try {
@@ -118,23 +136,13 @@ export default function HomeScreen() {
 
       setMessages(prev => [...prev, agentMessage]);
     } catch (error) {
-      // 如果API调用失败，使用模拟回复
-      const replies = [
-        '这个想法太棒了！让我帮你规划一下路线吧～',
-        '哇，原来你想去这里！那边确实有很多有趣的打卡点呢！',
-        '好呀好呀！我们一起去探索吧，我已经迫不及待啦！',
-        '旅行者，你知道吗？广州有很多隐藏的美食宝藏等你去发现哦！',
-      ];
-      const randomReply = replies[Math.floor(Math.random() * replies.length)];
-
-      const agentMessage = {
+      const errorMessage = {
         id: (Date.now() + 1).toString(),
         type: 'agent' as const,
-        content: randomReply,
+        content: '抱歉旅行者，阿穗暂时无法回复，请检查网络后重试～',
         time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       };
-
-      setMessages(prev => [...prev, agentMessage]);
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -188,14 +196,50 @@ export default function HomeScreen() {
 
     setIsCheckingIn(true);
     try {
-      // 模拟打卡（实际应用中会选择具体的锚点）
-      await createCheckin('1', selectedImage, '越秀区');
-      toast.show({ label: '打卡成功！', description: '恭喜你完成了这个地点的打卡，继续探索吧～', variant: 'success' });
+      // 获取当前 GPS 坐标
+      let coords: { latitude: number; longitude: number } | undefined;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          toast.show({ label: '需要位置权限', description: '请在设置中允许位置权限才能使用打卡功能', variant: 'warning' });
+          setIsCheckingIn(false);
+          return;
+        }
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      } catch (_) { /* GPS unavailable */ }
+
+      if (!coords) {
+        toast.show({ label: '无法获取位置', description: '请开启GPS定位后再打卡', variant: 'warning' });
+        setIsCheckingIn(false);
+        return;
+      }
+
+      // 加载所有锚点，找到最近的一个
+      const allAnchors = await getAnchors();
+      let nearest: { id: string; name: string; region_id: string; distance: number } | null = null;
+      for (const a of allAnchors) {
+        if (!a.unlocked) continue;
+        const dist = haversineDistance(coords.latitude, coords.longitude, a.latitude, a.longitude);
+        if (!nearest || dist < nearest.distance) {
+          nearest = { id: a.id, name: a.name, region_id: a.region_id, distance: dist };
+        }
+      }
+
+      if (!nearest || nearest.distance > 500) {
+        toast.show({ label: '附近无打卡点', description: '你距离最近的打卡点较远，请移动到打卡点附近再试', variant: 'warning' });
+        setIsCheckingIn(false);
+        return;
+      }
+
+      await createCheckin(nearest.id, selectedImage, nearest.name, coords);
+      toast.show({ label: '打卡成功！', description: `已在「${nearest.name}」完成打卡`, variant: 'success' });
       setCheckinModalVisible(false);
       setSelectedImage(null);
       loadStats();
-    } catch (error) {
-      toast.show({ label: '打卡失败', description: '请稍后重试', variant: 'danger' });
+      loadActiveQuest();
+    } catch (error: any) {
+      toast.show({ label: '打卡失败', description: error?.message || '请稍后重试', variant: 'danger' });
     } finally {
       setIsCheckingIn(false);
     }
@@ -483,7 +527,7 @@ export default function HomeScreen() {
     lineHeight: 22,
   },
   userText: {
-    color: '#FFF',
+    color: t.textInverse,
   },
   agentText: {
     color: t.text,
@@ -631,7 +675,7 @@ export default function HomeScreen() {
   },
   confirmButtonText: {
     fontSize: 16,
-    color: '#FFF',
+    color: t.textInverse,
     fontWeight: '700',
   },
   }), [t, windowWidth]);
@@ -688,39 +732,48 @@ export default function HomeScreen() {
         </View>
 
         {/* 今日任务卡片 */}
-        <View style={styles.taskCard}>
-          <LinearGradient
-            colors={['rgba(45,125,70,0.12)', 'rgba(45,125,70,0.03)', 'transparent']}
-            start={{ x: 1, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.taskCardDecor}
-          />
-          <View style={styles.taskHeader}>
-            <View style={styles.taskBadge}>
-              <FontAwesome6 name="flag" size={12} color={t.primary} />
-              <Text style={styles.taskBadgeText}>今日任务</Text>
+        {activeQuest ? (
+          <View style={styles.taskCard}>
+            <LinearGradient
+              colors={['rgba(45,125,70,0.12)', 'rgba(45,125,70,0.03)', 'transparent']}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.taskCardDecor}
+            />
+            <View style={styles.taskHeader}>
+              <View style={styles.taskBadge}>
+                <FontAwesome6 name="flag" size={12} color={t.primary} />
+                <Text style={styles.taskBadgeText}>主线任务</Text>
+              </View>
+              <Text style={styles.taskReward}>{activeQuest.reward}</Text>
             </View>
-            <Text style={styles.taskReward}>{todayTask.reward}</Text>
-          </View>
-          <Text style={styles.taskTitle}>{todayTask.title}</Text>
-          <Text style={styles.taskSubtitle}>{todayTask.subtitle}</Text>
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <LinearGradient
-                colors={[t.primary, '#4DAE60', '#5EBE70']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[
-                  styles.progressFill,
-                  { width: `${(todayTask.progress / todayTask.total) * 100}%` },
-                ]}
-              />
+            <Text style={styles.taskTitle}>{activeQuest.title}</Text>
+            <Text style={styles.taskSubtitle}>{activeQuest.subtitle}</Text>
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <LinearGradient
+                  colors={[t.primary, '#4DAE60', '#5EBE70']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[
+                    styles.progressFill,
+                    { width: `${(activeQuest.progress / activeQuest.total) * 100}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressText}>
+                {activeQuest.progress}/{activeQuest.total}
+              </Text>
             </View>
-            <Text style={styles.progressText}>
-              {todayTask.progress}/{todayTask.total}
-            </Text>
           </View>
-        </View>
+        ) : (
+          <View style={styles.taskCard}>
+            <Skeleton variant="shimmer" style={{ width: 80, height: 14, borderRadius: 4, marginBottom: 8 }} />
+            <Skeleton variant="shimmer" style={{ width: '60%', height: 18, borderRadius: 4, marginBottom: 4 }} />
+            <Skeleton variant="shimmer" style={{ width: '40%', height: 14, borderRadius: 4, marginBottom: 12 }} />
+            <Skeleton variant="shimmer" style={{ width: '100%', height: 8, borderRadius: 4 }} />
+          </View>
+        )}
 
         {/* 对话区域 */}
         <ScrollView
@@ -728,6 +781,7 @@ export default function HomeScreen() {
           style={styles.chatContainer}
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
+          onContentSizeChange={handleChatContentSizeChange}
         >
           {messages.map((msg) => (
             <View
@@ -824,9 +878,9 @@ export default function HomeScreen() {
                 disabled={!inputText.trim() || isLoading}
               >
                 {isLoading ? (
-                  <Spinner size="sm" color="#FFF" />
+                  <Spinner size="sm" color={t.textInverse} />
                 ) : (
-                  <FontAwesome6 name="paper-plane" size={18} color="#FFF" />
+                  <FontAwesome6 name="paper-plane" size={18} color={t.textInverse} />
                 )}
               </TouchableOpacity>
             </LinearGradient>
@@ -867,7 +921,7 @@ export default function HomeScreen() {
                     disabled={isCheckingIn}
                   >
                     {isCheckingIn ? (
-                      <Spinner size="sm" color="#FFF" />
+                      <Spinner size="sm" color={t.textInverse} />
                     ) : (
                       <Text style={styles.confirmButtonText}>确认打卡</Text>
                     )}

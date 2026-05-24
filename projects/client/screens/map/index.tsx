@@ -19,6 +19,7 @@ import * as Location from 'expo-location';
 import { getRegions, getAnchors, createCheckin, getStats } from '@/services/api';
 import { Spinner, Dialog, Skeleton, useToast } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
+import { useSafeSearchParams } from '@/hooks/useSafeRouter';
 import LeafletMap from '@/components/LeafletMap';
 
 const isWeb = Platform.OS === 'web';
@@ -80,12 +81,14 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const t = useAppTheme();
+  const params = useSafeSearchParams<{ region?: string }>();
   const [regions, setRegions] = useState<Region[]>([]);
   const [anchors, setAnchors] = useState<Anchor[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [activeRegion, setActiveRegion] = useState('yuexiu');
+  const [activeRegion, setActiveRegion] = useState(params.region || 'yuexiu');
   const [selectedAnchor, setSelectedAnchor] = useState<Anchor | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // 打卡相关状态
@@ -109,23 +112,10 @@ export default function MapScreen() {
       setRegions(regionsData);
       setAnchors(anchorsData);
       setStats(statsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load data:', error);
       if (!isRefresh) {
-        setRegions([
-          { id: 'yuexiu', name: '越秀', subtitle: '五羊圣地', color: '#8B4513', icon: 'landmark', unlocked: true },
-          { id: 'liwan', name: '荔湾', subtitle: '西关风华', color: '#DAA520', icon: 'store', unlocked: true },
-          { id: 'haizhu', name: '海珠', subtitle: '珠水映城', color: '#4682B4', icon: 'water', unlocked: false },
-          { id: 'tianhe', name: '天河', subtitle: 'CBD繁华', color: '#9370DB', icon: 'building', unlocked: false },
-        ]);
-        setAnchors([
-          { id: '1', name: '五羊石像', region_id: 'yuexiu', latitude: 23.1291, longitude: 113.2644, type: 'landmark', unlocked: true, checked: true, description: '广州城市标志，五羊传说的发源地' },
-          { id: '2', name: '镇海楼', region_id: 'yuexiu', latitude: 23.1350, longitude: 113.2610, type: 'landmark', unlocked: true, checked: true, description: '岭南第一楼，始建于明朝' },
-          { id: '3', name: '陈家祠', region_id: 'yuexiu', latitude: 23.1295, longitude: 113.2420, type: 'landmark', unlocked: true, checked: false, description: '广东民间工艺博物馆，建筑艺术瑰宝' },
-          { id: '4', name: '点都德', region_id: 'yuexiu', latitude: 23.1275, longitude: 113.2580, type: 'food', unlocked: true, checked: false, description: '老字号茶楼，早茶必去' },
-          { id: '5', name: '沙面岛', region_id: 'liwan', latitude: 23.1195, longitude: 113.2440, type: 'secret', unlocked: true, checked: false, description: '隐秘角落，充满历史感的欧式建筑群' },
-          { id: '6', name: '永庆坊', region_id: 'liwan', latitude: 23.1180, longitude: 113.2400, type: 'landmark', unlocked: false, checked: false, description: '恩宁路历史文化街区，活化更新典范' },
-        ]);
+        setLoadError(error?.message || '加载失败');
       }
     } finally {
       setIsLoading(false);
@@ -162,7 +152,17 @@ export default function MapScreen() {
     if (!selectedImage || !selectedAnchor) return;
     setIsCheckingIn(true);
     try {
-      await createCheckin(selectedAnchor.id, selectedImage, currentRegion?.name || '');
+      // 获取当前 GPS 坐标用于打卡验证
+      let coords: { latitude: number; longitude: number } | undefined;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+          coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        }
+      } catch (_) { /* GPS unavailable, backend will skip distance check */ }
+
+      await createCheckin(selectedAnchor.id, selectedImage, currentRegion?.name || '', coords);
       setAnchors(prev => prev.map(a =>
         a.id === selectedAnchor.id ? { ...a, checked: true } : a
       ));
@@ -293,7 +293,7 @@ export default function MapScreen() {
     color: t.textSecondary,
   },
   regionChipTextActive: {
-    color: '#fff',
+    color: t.textInverse,
     fontWeight: '600',
   },
   lockIcon: {
@@ -472,7 +472,7 @@ export default function MapScreen() {
     gap: 8,
   },
   checkinBtnText: {
-    color: '#fff',
+    color: t.textInverse,
     fontSize: 15,
     fontWeight: '600',
   },
@@ -511,7 +511,7 @@ export default function MapScreen() {
   confirmBtnText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: t.textInverse,
   },
   }), [t]);
 
@@ -539,6 +539,23 @@ export default function MapScreen() {
               ))}
             </View>
           </View>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Screen style={styles.loadingContainer}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+          <FontAwesome6 name="triangle-exclamation" size={48} color={t.textTertiary} />
+          <Text style={{ fontSize: 16, color: t.textSecondary, marginTop: 16, textAlign: 'center' }}>{loadError}</Text>
+          <TouchableOpacity
+            style={{ marginTop: 24, paddingHorizontal: 32, paddingVertical: 12, backgroundColor: t.primary, borderRadius: 24 }}
+            onPress={() => { setLoadError(null); loadData(); }}
+          >
+            <Text style={{ color: t.textInverse, fontWeight: '600' }}>重试</Text>
+          </TouchableOpacity>
         </View>
       </Screen>
     );
@@ -578,7 +595,7 @@ export default function MapScreen() {
                 <FontAwesome6
                   name={region.icon as any}
                   size={14}
-                  color={activeRegion === region.id ? '#fff' : t.textSecondary}
+                  color={activeRegion === region.id ? t.textInverse : t.textSecondary}
                 />
                 <Text style={[
                   styles.regionChipText,
@@ -658,13 +675,13 @@ export default function MapScreen() {
                   <FontAwesome6
                     name={getAnchorIcon(anchor.type) as any}
                     size={16}
-                    color="#fff"
+                    color={t.textInverse}
                   />
                 </View>
                 <Text style={styles.anchorName} numberOfLines={1}>{anchor.name}</Text>
                 {anchor.checked && (
                   <View style={styles.checkedMark}>
-                    <FontAwesome6 name="check" size={10} color="#fff" />
+                    <FontAwesome6 name="check" size={10} color={t.textInverse} />
                   </View>
                 )}
               </TouchableOpacity>
@@ -682,7 +699,7 @@ export default function MapScreen() {
                   <FontAwesome6
                     name={getAnchorIcon(selectedAnchor.type) as any}
                     size={24}
-                    color="#fff"
+                    color={t.textInverse}
                   />
                 </View>
                 <View style={styles.anchorDetailInfo}>
@@ -708,7 +725,7 @@ export default function MapScreen() {
                     style={styles.checkinBtnGradient}
                   >
                     <TouchableOpacity style={styles.checkinBtnInner} onPress={handleSelectFromGallery}>
-                      <FontAwesome6 name="camera" size={16} color="#fff" />
+                      <FontAwesome6 name="camera" size={16} color={t.textInverse} />
                       <Text style={styles.checkinBtnText}>去打卡</Text>
                     </TouchableOpacity>
                   </LinearGradient>
@@ -751,10 +768,10 @@ export default function MapScreen() {
                 disabled={isCheckingIn}
               >
                 {isCheckingIn ? (
-                  <Spinner size="sm" color="#fff" />
+                  <Spinner size="sm" color={t.textInverse} />
                 ) : (
                   <>
-                    <FontAwesome6 name="check" size={16} color="#fff" />
+                    <FontAwesome6 name="check" size={16} color={t.textInverse} />
                     <Text style={styles.confirmBtnText}>确认打卡</Text>
                   </>
                 )}

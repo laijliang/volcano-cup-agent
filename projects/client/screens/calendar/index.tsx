@@ -42,6 +42,7 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [checkinData, setCheckinData] = useState<Record<string, CheckinRecord[]>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -68,8 +69,9 @@ export default function CalendarScreen() {
         }
       });
       setCheckinData(grouped);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load checkins:', error);
+      setLoadError(error?.message || '加载失败');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -338,7 +340,7 @@ export default function CalendarScreen() {
     fontWeight: '600',
   },
   dayTextSelected: {
-    color: '#FFF',
+    color: t.textInverse,
     fontWeight: '600',
   },
   checkinDot: {
@@ -356,7 +358,7 @@ export default function CalendarScreen() {
   checkinCount: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#FFF',
+    color: t.textInverse,
   },
   checkinList: {
     marginTop: 16,
@@ -389,12 +391,12 @@ export default function CalendarScreen() {
     left: 0,
     right: 0,
     padding: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: t.overlay,
   },
   checkinName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFF',
+    color: t.textInverse,
   },
   checkinLocation: {
     fontSize: 11,
@@ -452,6 +454,23 @@ export default function CalendarScreen() {
               ))}
             </View>
           </View>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Screen>
+        <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }]}>
+          <FontAwesome6 name="triangle-exclamation" size={48} color={t.textTertiary} />
+          <Text style={{ fontSize: 16, color: t.textSecondary, marginTop: 16, textAlign: 'center' }}>{loadError}</Text>
+          <TouchableOpacity
+            style={{ marginTop: 24, paddingHorizontal: 32, paddingVertical: 12, backgroundColor: t.primary, borderRadius: 24 }}
+            onPress={() => { setLoadError(null); loadCheckins(); }}
+          >
+            <Text style={{ color: t.textInverse, fontWeight: '600' }}>重试</Text>
+          </TouchableOpacity>
         </View>
       </Screen>
     );
@@ -547,7 +566,7 @@ export default function CalendarScreen() {
                   <View style={styles.checkinOverlay}>
                     <Text style={styles.checkinName}>{checkin.name}</Text>
                     <Text style={styles.checkinLocation}>
-                      <FontAwesome6 name="map-marker" size={10} color="#FFF" /> {checkin.location}
+                      <FontAwesome6 name="map-marker" size={10} color={t.textInverse} /> {checkin.location}
                     </Text>
                   </View>
                 </View>
@@ -561,7 +580,7 @@ export default function CalendarScreen() {
                   <View style={styles.checkinOverlay}>
                     <Text style={styles.checkinName}>{checkin.name}</Text>
                     <Text style={styles.checkinLocation}>
-                      <FontAwesome6 name="map-marker" size={10} color="#FFF" /> {checkin.location}
+                      <FontAwesome6 name="map-marker" size={10} color={t.textInverse} /> {checkin.location}
                     </Text>
                   </View>
                 </View>

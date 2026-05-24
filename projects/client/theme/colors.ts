@@ -6,6 +6,7 @@ export interface AppThemeColors {
   text: string;
   textSecondary: string;
   textTertiary: string;
+  textInverse: string;
   border: string;
   borderLight: string;
   primary: string;
@@ -21,6 +22,7 @@ export interface AppThemeColors {
   warning: string;
   statsBg: string;
   shadowColor: string;
+  overlay: string;
 }
 
 export const lightColors: AppThemeColors = {
@@ -31,6 +33,7 @@ export const lightColors: AppThemeColors = {
   text: '#1A1A1A',
   textSecondary: '#666666',
   textTertiary: '#999999',
+  textInverse: '#FFFFFF',
   border: '#F0F0F0',
   borderLight: '#F5F5F5',
   primary: '#2D7D46',
@@ -46,6 +49,7 @@ export const lightColors: AppThemeColors = {
   warning: '#F59E0B',
   statsBg: '#F6FFED',
   shadowColor: '#2D7D46',
+  overlay: 'rgba(0,0,0,0.5)',
 };
 
 export const darkColors: AppThemeColors = {
@@ -56,6 +60,7 @@ export const darkColors: AppThemeColors = {
   text: '#E6EDF3',
   textSecondary: '#8B949E',
   textTertiary: '#6E7681',
+  textInverse: '#FFFFFF',
   border: '#21262D',
   borderLight: '#292E36',
   primary: '#3FB950',
@@ -71,4 +76,5 @@ export const darkColors: AppThemeColors = {
   warning: '#D29922',
   statsBg: '#161B22',
   shadowColor: '#000000',
+  overlay: 'rgba(0,0,0,0.6)',
 };
