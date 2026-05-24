@@ -118,8 +118,8 @@ export default function ProfileScreen() {
       setIsSaving(true);
       let avatarUrl = editAvatar;
 
-      // 如果是本地文件（非 URL），先上传
-      if (editAvatar && (editAvatar.startsWith('file://') || editAvatar.startsWith('/') || editAvatar.startsWith('content://'))) {
+      // 如果是本地文件（非远程 URL），先上传
+      if (editAvatar && !editAvatar.startsWith('http')) {
         setIsUploading(true);
         const { url } = await uploadImage(editAvatar);
         avatarUrl = url;

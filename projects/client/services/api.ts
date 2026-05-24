@@ -81,6 +81,25 @@ export async function getCheckins(): Promise<any[]> {
   return handleResponse(response);
 }
 
+// 替换打卡照片
+export async function updateCheckinPhoto(checkinId: string, imageUri: string): Promise<any> {
+  const filename = imageUri.split('/').pop() || 'photo.jpg';
+  const match = /\.(\w+)$/.exec(filename);
+  const mimeType = match ? `image/${match[1]}` : 'image/jpeg';
+
+  const imageFile = await createFormDataFile(imageUri, filename, mimeType);
+
+  const formData = new FormData();
+  formData.append('image', imageFile as any);
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/checkins/${checkinId}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 // 创建打卡记录
 export async function createCheckin(anchorId: string, imageUri: string, location: string, coords?: { latitude: number; longitude: number }): Promise<any> {
   const filename = imageUri.split('/').pop() || 'photo.jpg';
@@ -190,6 +209,12 @@ export async function login(phone: string, name?: string): Promise<{ token: stri
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, name }),
   });
+  return handleResponse(response);
+}
+
+// 获取聊天历史
+export async function getChatHistory(): Promise<{ id: string; role: string; content: string; created_at: string }[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat/history`, { headers: authHeaders() });
   return handleResponse(response);
 }
 

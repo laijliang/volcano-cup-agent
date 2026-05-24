@@ -17,7 +17,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { sendChatMessage, createCheckin, getStats, getAnchors, getMainQuests, type ChatMessage } from '@/services/api';
+import { sendChatMessage, createCheckin, getStats, getAnchors, getMainQuests, getChatHistory, type ChatMessage } from '@/services/api';
 import { Spinner, Dialog, Skeleton, useToast } from '@/heroui';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -77,7 +77,23 @@ export default function HomeScreen() {
   useEffect(() => {
     loadStats();
     loadActiveQuest();
+    loadChatHistory();
   }, []);
+
+  const loadChatHistory = async () => {
+    try {
+      const history = await getChatHistory();
+      if (history.length > 0) {
+        const mapped: ChatMessage[] = history.map(h => ({
+          id: h.id,
+          type: h.role === 'user' ? 'user' : 'agent',
+          content: h.content,
+          time: h.created_at?.slice(11, 16) || '',
+        }));
+        setMessages(mapped);
+      }
+    } catch (_) { /* keep initial messages */ }
+  };
 
   const loadActiveQuest = async () => {
     try {

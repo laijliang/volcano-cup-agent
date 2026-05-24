@@ -234,6 +234,20 @@ app.post("/api/v1/checkins", upload.single("image"), (req, res) => {
   res.status(201).json(newCheckin);
 });
 
+// 替换打卡照片
+app.put("/api/v1/checkins/:id", upload.single("image"), (req, res) => {
+  const { id } = req.params;
+  const checkin = db.select().from(schema.checkins).where(eq(schema.checkins.id, id)).get();
+  if (!checkin) return res.status(404).json({ error: "打卡记录不存在" });
+
+  const filename = req.file?.filename;
+  if (!filename) return res.status(400).json({ error: "请选择图片" });
+
+  const image_url = `${config.origin}/uploads/${filename}`;
+  db.update(schema.checkins).set({ image_url }).where(eq(schema.checkins.id, id)).run();
+  res.json({ ...checkin, image_url });
+});
+
 // ==================== 文件上传 ====================
 
 app.post("/api/v1/upload", upload.single("image"), (req, res) => {
@@ -289,6 +303,20 @@ app.get("/api/v1/achievements", (_req, res) => {
 });
 
 // ==================== AI 对话 ====================
+
+app.get("/api/v1/chat/history", (req, res) => {
+  const userId = req.userId!;
+  const history = db.select().from(schema.chatHistory)
+    .where(eq(schema.chatHistory.user_id, userId))
+    .orderBy(desc(schema.chatHistory.created_at))
+    .limit(40).all();
+  res.json(history.reverse().map(h => ({
+    id: String(h.id),
+    role: h.role,
+    content: h.content,
+    created_at: h.created_at,
+  })));
+});
 
 app.post("/api/v1/chat", validate(chatSchema), async (req, res) => {
   try {

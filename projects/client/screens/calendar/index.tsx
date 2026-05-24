@@ -14,8 +14,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/hooks/useAppTheme';
-import { getCheckins } from '@/services/api';
-import { Spinner, Skeleton } from '@/heroui';
+import { getCheckins, updateCheckinPhoto } from '@/services/api';
+import * as ImagePicker from 'expo-image-picker';
+import { Spinner, Skeleton, Dialog, useToast } from '@/heroui';
 
 const { width } = Dimensions.get('window');
 
@@ -44,6 +45,10 @@ export default function CalendarScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [replaceTarget, setReplaceTarget] = useState<CheckinRecord | null>(null);
+  const [replaceImage, setReplaceImage] = useState<string | null>(null);
+  const [isReplacing, setIsReplacing] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadCheckins();
@@ -80,6 +85,43 @@ export default function CalendarScreen() {
 
   const handleRefresh = () => {
     loadCheckins(true);
+  };
+
+  const handleReplacePhoto = (checkin: CheckinRecord) => {
+    setReplaceTarget(checkin);
+    setReplaceImage(null);
+  };
+
+  const handlePickReplaceImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      toast.show({ label: '提示', description: '需要相册权限' });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setReplaceImage(result.assets[0].uri);
+    }
+  };
+
+  const handleConfirmReplace = async () => {
+    if (!replaceTarget || !replaceImage) return;
+    try {
+      setIsReplacing(true);
+      await updateCheckinPhoto(replaceTarget.id, replaceImage);
+      toast.show({ label: '已更新', description: '照片已替换', variant: 'success' });
+      setReplaceTarget(null);
+      setReplaceImage(null);
+      loadCheckins(true);
+    } catch (error: any) {
+      toast.show({ label: '替换失败', description: error.message || '请稍后重试' });
+    } finally {
+      setIsReplacing(false);
+    }
   };
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
@@ -375,8 +417,8 @@ export default function CalendarScreen() {
     flexDirection: 'row' as const,
   },
   checkinCard: {
-    width: 140,
-    height: 180,
+    width: 220,
+    height: 140,
     borderRadius: 16,
     overflow: 'hidden',
     marginRight: 12,
@@ -384,6 +426,17 @@ export default function CalendarScreen() {
   checkinImage: {
     width: '100%',
     height: '100%',
+  },
+  replaceBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   checkinOverlay: {
     position: 'absolute',
@@ -563,6 +616,9 @@ export default function CalendarScreen() {
               {selectedCheckins.map((checkin) => (
                 <View key={checkin.id} style={styles.checkinCard}>
                   <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
+                  <TouchableOpacity style={styles.replaceBtn} onPress={() => handleReplacePhoto(checkin)} activeOpacity={0.7}>
+                    <FontAwesome6 name="pen" size={12} color="#FFF" />
+                  </TouchableOpacity>
                   <View style={styles.checkinOverlay}>
                     <Text style={styles.checkinName}>{checkin.name}</Text>
                     <Text style={styles.checkinLocation}>
@@ -573,19 +629,24 @@ export default function CalendarScreen() {
               ))}
             </ScrollView>
           ) : !selectedDate ? (
-            Object.entries(checkinData).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 5).flatMap(([, checkins]) =>
-              checkins.map((checkin) => (
-                <View key={checkin.id} style={styles.checkinCard}>
-                  <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
-                  <View style={styles.checkinOverlay}>
-                    <Text style={styles.checkinName}>{checkin.name}</Text>
-                    <Text style={styles.checkinLocation}>
-                      <FontAwesome6 name="map-marker" size={10} color={t.textInverse} /> {checkin.location}
-                    </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.checkinScroll}>
+              {Object.entries(checkinData).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 5).flatMap(([, checkins]) =>
+                checkins.map((checkin) => (
+                  <View key={checkin.id} style={styles.checkinCard}>
+                    <Image source={{ uri: checkin.image }} style={styles.checkinImage} />
+                    <TouchableOpacity style={styles.replaceBtn} onPress={() => handleReplacePhoto(checkin)} activeOpacity={0.7}>
+                      <FontAwesome6 name="pen" size={12} color="#FFF" />
+                    </TouchableOpacity>
+                    <View style={styles.checkinOverlay}>
+                      <Text style={styles.checkinName}>{checkin.name}</Text>
+                      <Text style={styles.checkinLocation}>
+                        <FontAwesome6 name="map-marker" size={10} color={t.textInverse} /> {checkin.location}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              ))
-            )
+                ))
+              )}
+            </ScrollView>
           ) : (
             <View style={styles.emptyCheckins}>
               <FontAwesome6 name="camera-retro" size={32} color={t.textTertiary} />
@@ -594,6 +655,67 @@ export default function CalendarScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* 替换照片弹窗 */}
+      <Dialog isOpen={!!replaceTarget} onOpenChange={(open) => { if (!open) setReplaceTarget(null); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content>
+            <Dialog.Close />
+            <Dialog.Title>替换照片</Dialog.Title>
+            <Dialog.Description>
+              为「{replaceTarget?.name}」选择一张新照片
+            </Dialog.Description>
+
+            <TouchableOpacity
+              onPress={handlePickReplaceImage}
+              style={{
+                marginTop: 16,
+                backgroundColor: t.surfaceSecondary,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor: t.border,
+                borderStyle: 'dashed',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                aspectRatio: 16 / 10,
+              }}
+              activeOpacity={0.7}
+            >
+              {replaceImage ? (
+                <Image source={{ uri: replaceImage }} style={{ width: '100%', height: '100%' }} />
+              ) : (
+                <View style={{ alignItems: 'center' }}>
+                  <FontAwesome6 name="camera" size={32} color={t.textTertiary} />
+                  <Text style={{ fontSize: 14, color: t.textTertiary, marginTop: 8 }}>点击选择图片</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => { setReplaceTarget(null); setReplaceImage(null); }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: t.surfaceSecondary, alignItems: 'center' }}
+                disabled={isReplacing}
+              >
+                <Text style={{ fontSize: 16, color: t.textSecondary, fontWeight: '600' }}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirmReplace}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: replaceImage ? t.primary : t.border, alignItems: 'center' }}
+                disabled={isReplacing || !replaceImage}
+              >
+                {isReplacing ? (
+                  <Spinner size="sm" color={t.textInverse} />
+                ) : (
+                  <Text style={{ fontSize: 16, color: replaceImage ? t.textInverse : t.textTertiary, fontWeight: '600' }}>确认替换</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog>
     </Screen>
   );
 }
